@@ -2382,13 +2382,17 @@ public class CometWaveManager {
             com.hypixel.hytale.protocol.Transform transform = new com.hypixel.hytale.protocol.Transform(position,
                     direction);
 
-            // Create the MapMarker
+            // Create the MapMarker (name is now FormattedMessage, plus customName and components params)
+            com.hypixel.hytale.protocol.FormattedMessage nameMsg = new com.hypixel.hytale.protocol.FormattedMessage();
+            nameMsg.rawText = markerName;
             com.hypixel.hytale.protocol.packets.worldmap.MapMarker marker = new com.hypixel.hytale.protocol.packets.worldmap.MapMarker(
                     markerId,
-                    markerName,
+                    nameMsg,
+                    null,      // customName
                     iconPath,
-                    transform, // Use protocol Transform directly, not toTransformPacket!
-                    null // No context menu items
+                    transform,
+                    null,      // no context menu items
+                    null       // no components
             );
 
             // DON'T add to world's global points of interest - that makes it visible to

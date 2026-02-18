@@ -101,7 +101,6 @@ public class CometModPlugin extends JavaPlugin {
         getEventRegistry().registerGlobal(EntityRemoveEvent.class, this::onEntityRemove);
 
         com.hypixel.hytale.server.core.command.system.CommandManager.get().registerSystemCommand(new CometCommand());
-        com.hypixel.hytale.server.core.command.system.CommandManager.get().registerSystemCommand(new CometConfigCommand());
 
         getEventRegistry().registerGlobal(
                 com.hypixel.hytale.server.core.event.events.player.PlayerReadyEvent.class,

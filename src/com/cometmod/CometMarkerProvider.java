@@ -3,10 +3,12 @@ package com.cometmod;
 import com.hypixel.hytale.protocol.Transform;
 import com.hypixel.hytale.protocol.Position;
 import com.hypixel.hytale.protocol.Direction;
+import com.hypixel.hytale.protocol.FormattedMessage;
 import com.hypixel.hytale.protocol.packets.worldmap.MapMarker;
+import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.worldmap.WorldMapManager;
-import com.hypixel.hytale.server.core.universe.world.worldmap.markers.MapMarkerTracker;
+import com.hypixel.hytale.server.core.universe.world.worldmap.markers.MarkersCollector;
 import com.hypixel.hytale.math.vector.Vector3d;
 import com.hypixel.hytale.math.vector.Vector3i;
 
@@ -22,21 +24,15 @@ public class CometMarkerProvider implements WorldMapManager.MarkerProvider {
     }
     
     @Override
-    public void update(@Nonnull World world, @Nonnull MapMarkerTracker tracker,
-                      int chunkViewRadius, int playerChunkX, int playerChunkZ) {
-        
+    public void update(@Nonnull World world, @Nonnull Player viewingPlayer, @Nonnull MarkersCollector collector) {
+
         // Get the wave manager to access active comets
         CometWaveManager waveManager = CometModPlugin.getWaveManager();
         if (waveManager == null) {
             return;
         }
-        
+
         try {
-            // Get the player viewing this map
-            com.hypixel.hytale.server.core.entity.entities.Player viewingPlayer = tracker.getPlayer();
-            if (viewingPlayer == null) {
-                return;
-            }
             java.util.UUID viewingPlayerUUID = viewingPlayer.getUuid();
             
             // Get active comets from wave manager
@@ -91,17 +87,23 @@ public class CometMarkerProvider implements WorldMapManager.MarkerProvider {
                 Direction direction = new Direction();  // Zero rotation
                 Transform transform = new Transform(position, direction);
                 
-                // Create the MapMarker directly (pass protocol Transform, not toTransformPacket!)
+                // Create FormattedMessage for the marker name
+                FormattedMessage nameMsg = new FormattedMessage();
+                nameMsg.rawText = markerName;
+
+                // Create the MapMarker
                 MapMarker marker = new MapMarker(
                     markerId,
-                    markerName,
+                    nameMsg,
+                    null,       // customName
                     iconPath,
-                    transform,  // Use protocol Transform directly!
-                    null  // No context menu items
+                    transform,
+                    null,       // no context menu items
+                    null        // no components
                 );
-                
-                // Send marker using the simpler overload (like POIMarkerProvider and MapTrail)
-                tracker.trySendMarker(chunkViewRadius, playerChunkX, playerChunkZ, marker);
+
+                // Add marker via collector (handles view distance internally)
+                collector.add(marker);
             }
         } catch (Exception e) {
             LOGGER.warning("Error updating comet markers: " + e.getMessage());

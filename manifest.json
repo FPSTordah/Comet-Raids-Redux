@@ -15,5 +15,6 @@
   "DisabledByDefault": false,
   "Main": "com.cometmod.CometModPlugin",
   "IncludesAssetPack": true,
-  "SubPlugins": []
+  "SubPlugins": [],
+  "ServerVersion": "2026.02.17-255364b8e"
 }
