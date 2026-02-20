@@ -1,6 +1,8 @@
-# Comet Raids
+# Comet_Raids_Redux
 
 Ever wanted random events to spice up your Hytale gameplay? This mod adds falling comets that crash into your world, bringing waves of enemies to fight. Break the comet stone to start the encounter - survive all waves and claim your rewards.
+
+`Comet_Raids_Redux` is the actively maintained continuation of the original Comet Raids project.
 
 This mod is built for players who want a raid-like experience and server owners who want a customizable reward system. You can create your own custom themes, define multi-wave encounters, override loot tables per theme, and tweak every aspect of the spawning and combat. Check the bottom of `comet_config.json` for examples of custom wave configurations.
 
@@ -11,8 +13,34 @@ This mod is built for players who want a raid-like experience and server owners 
 - **4 Comet Tiers** - Uncommon, Rare, Epic, and Legendary. Higher tiers = tougher fights, better loot.
 - **Themed Waves** - Skeletons, goblins, spiders, trorks, outlanders, undead hordes... each comet picks a random theme (or you can force one).
 - **Multi-Wave Combat** - Enemies spawn in waves. Clear one, the next begins. Rewards drop after the final wave.
+- **Timed Reward Chest** - Final rewards spawn in a shared comet chest. It expires after 20 seconds of inactivity; each touch/open resets the timer.
 - **Map Markers** - Comets show up on your map so you can track them down.
 - **Fully Configurable** - Spawn rates, enemy counts, loot tables, despawn timers... tweak it all.
+
+## Quick Start
+
+### Requirements
+
+- Java 21
+- Maven 3.9+
+
+### Build
+
+```bash
+mvn clean package
+```
+
+Build output:
+
+- `target/Comet_Raids_Redux-2.0.jar`
+
+### Deploy
+
+Place `target/Comet_Raids_Redux-2.0.jar` in your server mods/plugins location, replacing the old jar, then restart the server.
+
+### IDE
+
+Open/import as a Maven project, then Build/Rebuild in your IDE.
 
 ## Comet Ownership
 
@@ -54,23 +82,21 @@ The tier of comet that spawns depends on the zone you're in:
 
 ### Fixed Spawn Point Commands
 
-These commands let you set up spawn points that automatically spawn comets at specific locations.
+Current source snapshot status:
+
+- `/comet listspawns` is functional (read-only list from `fixed_spawns.json`)
+- `/comet setspawn`, `/comet schedulespawn`, `/comet removespawn` are placeholders and currently direct you to edit `fixed_spawns.json` manually.
 
 | Command | Description |
 |---------|-------------|
-| `/comet setspawn <cooldown>` | Add a fixed spawn point with cooldown in seconds |
-| `/comet schedulespawn <times>` | Add a spawn point with real-world times (e.g. `18:00,06:00`) |
-| `/comet removespawn` | Remove the nearest spawn point (within 10 blocks) |
-| `/comet removespawn --target <name or index>` | Remove a spawn point by name or index number |
 | `/comet listspawns` | List all configured fixed spawn points |
+| `/comet setspawn <cooldown>` | Placeholder: edit `fixed_spawns.json` manually |
+| `/comet schedulespawn <times>` | Placeholder: edit `fixed_spawns.json` manually |
+| `/comet removespawn` | Placeholder: edit `fixed_spawns.json` manually |
+| `/comet removespawn --target <name or index>` | Placeholder: edit `fixed_spawns.json` manually |
 
-**Optional flags for setspawn/schedulespawn:**
-`--name`, `--tier`, `--theme`, `--despawnMinutes`, `--notifyRadius`, `--notifyTitle`, `--notifySubtitle`
-
-**Full example:**
-```
-/comet setspawn 300 --name "Boss Arena" --tier Epic --theme Trork --notifyRadius global --notifyTitle "Boss Incoming!"
-```
+**Fixed-spawn schema keys (for manual JSON editing):**
+`name`, `enabled`, `cooldownSeconds`, `scheduledTimes`, `tier`, `theme`, `despawnMinutes`, `notifyRadius`, `notifyTitle`, `notifySubtitle`
 
 ### Spawn Command Examples
 
@@ -85,12 +111,23 @@ These commands let you set up spawn points that automatically spawn comets at sp
 
 ### More Fixed Spawn Examples
 
-```
-/comet setspawn 300                                     # Basic cooldown spawn
-/comet setspawn 600 --tier Epic --theme Trork           # With tier and theme
-/comet setspawn 300 --notifyRadius none                 # No notification
-/comet schedulespawn 18:00,06:00 --name "Evening Raid"  # Scheduled times
-/comet removespawn --target "Town Square"               # Remove by name
+These are still valid as JSON examples, but command-based editing is currently disabled:
+
+```json
+{
+  "spawns": [
+    {
+      "x": 100,
+      "y": 64,
+      "z": 200,
+      "name": "Town Square",
+      "enabled": true,
+      "cooldownSeconds": 300,
+      "tier": "Epic",
+      "theme": "Trork Warband"
+    }
+  ]
+}
 ```
 
 ### Available Themes
@@ -118,13 +155,41 @@ These commands let you set up spawn points that automatically spawn comets at sp
 
 All settings live in `comet_config.json`. Open it with any text editor.
 
+## Packaging As One JAR
+
+This project is now Maven-based and builds a single distributable JAR directly.
+
+To build:
+
+```bash
+mvn clean package
+```
+
+This creates:
+
+- `target/Comet_Raids_Redux-2.0.jar`
+
+The output JAR includes:
+
+- `Common/`
+- `Server/`
+- `manifest.json`
+- `comet_config.json`
+- `fixed_spawns.json`
+
+In IntelliJ, open/import the project as a Maven project and use Build/Rebuild.
+
 ### Fixed Spawn Points
 
-Fixed spawn points are stored in a separate file: `fixed_spawns.json`. You can edit this file directly or use the in-game commands.
+Fixed spawn points are stored in a separate file: `fixed_spawns.json`.
 
-Each spawn point supports two modes:
+In this source snapshot, command-based fixed-spawn editing/scheduling is disabled; edit this file directly and use `/comet listspawns` to verify.
+
+Schema supports two modes:
 - **Cooldown mode**: Spawns a comet every X seconds
 - **Scheduled mode**: Spawns at specific real-world times (24-hour format)
+
+> **Current limitation:** runtime fixed-spawn scheduling is disabled in this source snapshot. The file format is documented here for compatibility and future re-enable.
 
 ```json
 {
@@ -224,6 +289,29 @@ Each spawn point supports two modes:
 
 **themes** - Enemy wave configurations (see existing themes for examples)
 
+### Startup Validation
+
+On load, the mod runs lightweight validation for:
+
+- `comet_config.json`
+- `fixed_spawns.json`
+
+Validation emits actionable logs with this prefix:
+
+- `[ConfigValidation][comet_config.json]`
+- `[ConfigValidation][fixed_spawns.json]`
+
+Errors do not hard-stop startup, but indicate config issues you should fix.
+
+### Schema Notes (Tooling-Safe)
+
+Some config objects intentionally include pseudo-comment keys for human guidance.
+These keys are supported by the mod parser and should be treated as metadata by tools:
+
+- Any key starting with `_` is metadata/comment-only (for example `_comment_multiwave`).
+- Under `themes`, non-theme entries should use `_` prefix so validators and editors can ignore them.
+- Theme definitions should remain object values (`"theme_id": { ... }`), while pseudo-comments can be strings.
+
 ### Theme Configuration
 
 Themes can have custom reward overrides that replace the default tier rewards:
@@ -259,21 +347,27 @@ The config is fully JSON - just copy an existing theme, rename it, and start twe
 
 > **Tip for Fixed Spawn Points:** If you're creating a custom theme specifically for fixed spawn points (like boss arenas), set `"naturalSpawn": false` on that theme so it only spawns at your configured locations, not randomly in the world.
 
-## Source Code
+## Version Notes
 
-Source is available at https://github.com/FrogCsLoL/Comet-Raids/tree/main
+- `manifest.json` controls runtime compatibility (`ServerVersion`).
+- `pom.xml` controls compile dependency (`hytale.server.version`).
+- Keep them aligned when updating to a new server release.
 
-## Bug Reports
+## Attribution
 
-Found a bug? Report it on Curseforge or Github. Include what you were doing, any error messages from the server console, and whether you're running singleplayer or multiplayer.
+Special thanks to Frog for the original Comet Raids groundwork and for allowing continued development with free rein.
+
+- Original repository: https://github.com/FrogCsLoL/Comet-Raids
 
 ## Usage & Distribution
 
-This mod is free to use, modify, and redistribute. Just credit me (Frog) somewhere if you share it or use it in your own projects. That's all I ask.
+This project is being maintained under MIT permission from the original owner.
 
 ## Credits
 
-Created by **Frog**
+Original mod created by **Frog**.
+
+Current continuation and maintenance: **Comet_Raids_Redux**.
 
 Ty to Pferd for balancing this Mod.
 

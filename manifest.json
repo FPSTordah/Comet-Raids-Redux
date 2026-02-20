@@ -1,11 +1,14 @@
 {
   "Group": "CustomMod",
-  "Name": "Comet Raids",
-  "Version": "1.0.0",
-  "Description": "Comets that spawn waves of mobs when activated",
+  "Name": "Comet_Raids_Redux",
+  "Version": "2.0",
+  "Description": "Comet_Raids_Redux - continued development of Comet Raids",
   "Authors": [
     {
       "Name": "Frog"
+    },
+    {
+      "Name": "Comet_Raids_Redux"
     }
   ],
   "Website": "",
@@ -16,5 +19,5 @@
   "Main": "com.cometmod.CometModPlugin",
   "IncludesAssetPack": true,
   "SubPlugins": [],
-  "ServerVersion": "2026.02.17-255364b8e"
+  "ServerVersion": "2026.02.19-1a311a592"
 }
