@@ -1,5 +1,18 @@
 package com.cometmod;
 
+import com.cometmod.*;
+import com.cometmod.commands.*;
+import com.cometmod.services.*;
+import com.cometmod.spawn.*;
+import com.cometmod.systems.*;
+import com.cometmod.wave.*;
+
+
+import static com.cometmod.config.parser.ConfigJson.extractBooleanValue;
+import static com.cometmod.config.parser.ConfigJson.extractDoubleValue;
+import static com.cometmod.config.parser.ConfigJson.extractIntValue;
+import static com.cometmod.config.parser.ConfigJson.extractJsonObject;
+
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -9,15 +22,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
 
-import com.cometmod.config.BossEntry;
-import com.cometmod.config.DefaultThemes;
-import com.cometmod.config.MobEntry;
-import com.cometmod.config.ThemeConfig;
-import com.cometmod.config.ThemeConfigParser;
-import com.cometmod.config.ThemeConfigWriter;
-import com.cometmod.config.TierSettings;
-import com.cometmod.config.TierRewards;
-import com.cometmod.config.ZoneSpawnChances;
+import com.cometmod.config.model.BossEntry;
+import com.cometmod.config.defaults.DefaultThemes;
+import com.cometmod.config.model.MobEntry;
+import com.cometmod.config.validation.ConfigValidationReport;
+import com.cometmod.config.validation.ConfigValidator;
+import com.cometmod.config.model.ThemeConfig;
+import com.cometmod.config.parser.ThemeConfigParser;
+import com.cometmod.config.parser.ThemeConfigWriter;
+import com.cometmod.config.model.TierSettings;
+import com.cometmod.config.model.TierRewards;
+import com.cometmod.config.model.ZoneSpawnChances;
 
 /**
  * Configuration manager for Comet Mod settings.
@@ -142,6 +157,7 @@ public class CometConfig {
         if (configFile.exists() && configFile.isFile()) {
             try {
                 String content = new String(java.nio.file.Files.readAllBytes(configFile.toPath()));
+                logValidationReport("comet_config.json", ConfigValidator.validateCometConfig(content));
                 config = parseJson(content);
                 LOGGER.info("Loaded Comet Mod configuration from: " + configFile.getAbsolutePath());
 
@@ -182,6 +198,22 @@ public class CometConfig {
         return config;
     }
 
+    private static void logValidationReport(String fileName, ConfigValidationReport report) {
+        if (report == null || report.isClean()) {
+            return;
+        }
+
+        for (String info : report.getInfos()) {
+            LOGGER.info("[ConfigValidation][" + fileName + "] " + info);
+        }
+        for (String warning : report.getWarnings()) {
+            LOGGER.warning("[ConfigValidation][" + fileName + "] " + warning);
+        }
+        for (String error : report.getErrors()) {
+            LOGGER.warning("[ConfigValidation][" + fileName + "] ERROR: " + error);
+        }
+    }
+
     /**
      * Create a config with default values
      */
@@ -190,6 +222,7 @@ public class CometConfig {
         config.themes = DefaultThemes.generateDefaults();
         config.themeList = new ArrayList<>(config.themes.values());
         config.tierSettings = DefaultThemes.getDefaultTierSettings();
+        config.rewardSettings = getDefaultRewardSettings();
         config.zoneSpawnChances = ZoneSpawnChances.generateDefaults();
         config.themesLoaded = true;
         return config;
@@ -215,46 +248,29 @@ public class CometConfig {
             String parseFrom = (spawnBlock != null) ? spawnBlock : json;
 
             // Parse spawn settings
-            if (parseFrom.contains("\"minDelaySeconds\"")) {
-                String value = extractJsonValue(parseFrom, "minDelaySeconds");
-                if (value != null)
-                    config.minDelaySeconds = Integer.parseInt(value);
-            }
-            if (parseFrom.contains("\"maxDelaySeconds\"")) {
-                String value = extractJsonValue(parseFrom, "maxDelaySeconds");
-                if (value != null)
-                    config.maxDelaySeconds = Integer.parseInt(value);
-            }
-            if (parseFrom.contains("\"spawnChance\"")) {
-                String value = extractJsonValue(parseFrom, "spawnChance");
-                if (value != null)
-                    config.spawnChance = Double.parseDouble(value);
-            }
-            if (parseFrom.contains("\"despawnTimeMinutes\"")) {
-                String value = extractJsonValue(parseFrom, "despawnTimeMinutes");
-                if (value != null)
-                    config.despawnTimeMinutes = Double.parseDouble(value);
-            }
-            if (parseFrom.contains("\"minSpawnDistance\"")) {
-                String value = extractJsonValue(parseFrom, "minSpawnDistance");
-                if (value != null)
-                    config.minSpawnDistance = Integer.parseInt(value);
-            }
-            if (parseFrom.contains("\"maxSpawnDistance\"")) {
-                String value = extractJsonValue(parseFrom, "maxSpawnDistance");
-                if (value != null)
-                    config.maxSpawnDistance = Integer.parseInt(value);
-            }
-            if (parseFrom.contains("\"globalComets\"")) {
-                String value = extractJsonValue(parseFrom, "globalComets");
-                if (value != null)
-                    config.globalComets = Boolean.parseBoolean(value);
-            }
-            if (parseFrom.contains("\"naturalSpawnsEnabled\"")) {
-                String value = extractJsonValue(parseFrom, "naturalSpawnsEnabled");
-                if (value != null)
-                    config.naturalSpawnsEnabled = Boolean.parseBoolean(value);
-            }
+            Integer minDelaySeconds = extractIntValue(parseFrom, "minDelaySeconds");
+            if (minDelaySeconds != null) config.minDelaySeconds = minDelaySeconds;
+
+            Integer maxDelaySeconds = extractIntValue(parseFrom, "maxDelaySeconds");
+            if (maxDelaySeconds != null) config.maxDelaySeconds = maxDelaySeconds;
+
+            Double spawnChance = extractDoubleValue(parseFrom, "spawnChance");
+            if (spawnChance != null) config.spawnChance = spawnChance;
+
+            Double despawnMinutes = extractDoubleValue(parseFrom, "despawnTimeMinutes");
+            if (despawnMinutes != null) config.despawnTimeMinutes = despawnMinutes;
+
+            Integer minSpawnDistance = extractIntValue(parseFrom, "minSpawnDistance");
+            if (minSpawnDistance != null) config.minSpawnDistance = minSpawnDistance;
+
+            Integer maxSpawnDistance = extractIntValue(parseFrom, "maxSpawnDistance");
+            if (maxSpawnDistance != null) config.maxSpawnDistance = maxSpawnDistance;
+
+            Boolean globalComets = extractBooleanValue(parseFrom, "globalComets");
+            if (globalComets != null) config.globalComets = globalComets;
+
+            Boolean naturalSpawnsEnabled = extractBooleanValue(parseFrom, "naturalSpawnsEnabled");
+            if (naturalSpawnsEnabled != null) config.naturalSpawnsEnabled = naturalSpawnsEnabled;
 
             // Parse themes using ThemeConfigParser
             config.themes = ThemeConfigParser.parseThemes(json);
@@ -281,86 +297,6 @@ public class CometConfig {
     }
 
     /**
-     * Extract a JSON object by key
-     */
-    private static String extractJsonObject(String json, String key) {
-        try {
-            String searchKey = "\"" + key + "\"";
-            int keyIndex = json.indexOf(searchKey);
-            if (keyIndex == -1)
-                return null;
-
-            int colonIndex = json.indexOf(":", keyIndex);
-            if (colonIndex == -1)
-                return null;
-
-            int braceIndex = json.indexOf("{", colonIndex);
-            if (braceIndex == -1)
-                return null;
-
-            int depth = 0;
-            int endPos = braceIndex;
-            boolean inString = false;
-
-            for (int i = braceIndex; i < json.length(); i++) {
-                char c = json.charAt(i);
-                if (c == '"' && (i == 0 || json.charAt(i - 1) != '\\')) {
-                    inString = !inString;
-                }
-                if (!inString) {
-                    if (c == '{')
-                        depth++;
-                    else if (c == '}') {
-                        depth--;
-                        if (depth == 0) {
-                            endPos = i + 1;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            return json.substring(braceIndex, endPos);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /**
-     * Extract a JSON value from a string
-     */
-    private static String extractJsonValue(String json, String key) {
-        try {
-            String searchKey = "\"" + key + "\"";
-            int keyIndex = json.indexOf(searchKey);
-            if (keyIndex == -1)
-                return null;
-
-            int colonIndex = json.indexOf(":", keyIndex);
-            if (colonIndex == -1)
-                return null;
-
-            int startIndex = colonIndex + 1;
-            while (startIndex < json.length() && Character.isWhitespace(json.charAt(startIndex))) {
-                startIndex++;
-            }
-
-            int endIndex = startIndex;
-            while (endIndex < json.length()) {
-                char c = json.charAt(endIndex);
-                if (c == ',' || c == '}' || c == ']' || Character.isWhitespace(c)) {
-                    break;
-                }
-                endIndex++;
-            }
-
-            return json.substring(startIndex, endIndex).trim();
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /**
      * Save configuration to file
      */
     public void save() {
@@ -379,6 +315,9 @@ public class CometConfig {
         if (tierSettings.isEmpty()) {
             tierSettings = DefaultThemes.getDefaultTierSettings();
         }
+        if (rewardSettings.isEmpty()) {
+            rewardSettings = getDefaultRewardSettings();
+        }
         if (zoneSpawnChances.isEmpty()) {
             zoneSpawnChances = ZoneSpawnChances.generateDefaults();
         }
@@ -396,6 +335,14 @@ public class CometConfig {
             LOGGER.severe("Failed to save config file: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    private static Map<Integer, TierRewards> getDefaultRewardSettings() {
+        Map<Integer, TierRewards> defaults = new LinkedHashMap<>();
+        for (int tier = 1; tier <= 4; tier++) {
+            defaults.put(tier, TierRewards.getDefaultForTier(tier));
+        }
+        return defaults;
     }
 
     /**

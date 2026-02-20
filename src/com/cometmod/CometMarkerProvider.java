@@ -1,5 +1,13 @@
 package com.cometmod;
 
+import com.cometmod.*;
+import com.cometmod.commands.*;
+import com.cometmod.services.*;
+import com.cometmod.spawn.*;
+import com.cometmod.systems.*;
+import com.cometmod.wave.*;
+
+
 import com.hypixel.hytale.protocol.Transform;
 import com.hypixel.hytale.protocol.Position;
 import com.hypixel.hytale.protocol.Direction;

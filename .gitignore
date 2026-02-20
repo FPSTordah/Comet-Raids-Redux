@@ -1,7 +1,11 @@
 # Build files
 build.bat
 build/
-com/
+dist/
+target/
+/com/
+!src/com/
+!src/com/**
 
 # Tools
 tools/

@@ -1,5 +1,13 @@
 package com.cometmod;
 
+import com.cometmod.*;
+import com.cometmod.commands.*;
+import com.cometmod.services.*;
+import com.cometmod.spawn.*;
+import com.cometmod.systems.*;
+import com.cometmod.wave.*;
+
+
 import com.hypixel.hytale.codec.builder.BuilderCodec;
 import com.hypixel.hytale.component.CommandBuffer;
 import com.hypixel.hytale.component.Ref;

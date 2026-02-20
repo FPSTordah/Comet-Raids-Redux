@@ -1,5 +1,14 @@
 package com.cometmod;
 
+import com.cometmod.*;
+import com.cometmod.commands.*;
+import com.cometmod.loot.*;
+import com.cometmod.services.*;
+import com.cometmod.spawn.*;
+import com.cometmod.systems.*;
+import com.cometmod.wave.*;
+
+
 import com.hypixel.hytale.server.core.event.events.entity.EntityRemoveEvent;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
@@ -97,6 +106,8 @@ public class CometModPlugin extends JavaPlugin {
                 CometStoneActivateInteraction.class, CometStoneActivateInteraction.CODEC);
         getCodecRegistry(Interaction.CODEC).register("Comet_Stone_Legendary_Activate",
                 CometStoneActivateInteraction.class, CometStoneActivateInteraction.CODEC);
+        getCodecRegistry(Interaction.CODEC).register("Comet_OpenRewardChest",
+                CometOpenRewardChestInteraction.class, CometOpenRewardChestInteraction.CODEC);
 
         getEventRegistry().registerGlobal(EntityRemoveEvent.class, this::onEntityRemove);
 
@@ -214,6 +225,24 @@ public class CometModPlugin extends JavaPlugin {
             LOGGER.warning("Failed to register CometDamageModifierSystem: " + e.getMessage());
         }
 
+        try {
+            getEntityStoreRegistry().registerSystem(new CometLootChestTouchSystem());
+        } catch (Exception e) {
+            LOGGER.warning("Failed to register CometLootChestTouchSystem: " + e.getMessage());
+        }
+
+        try {
+            getEntityStoreRegistry().registerSystem(new CometLootChestNeighborUseSystem());
+        } catch (Exception e) {
+            LOGGER.warning("Failed to register CometLootChestNeighborUseSystem: " + e.getMessage());
+        }
+
+        try {
+            getEntityStoreRegistry().registerSystem(new CometLootChestBreakCleanupSystem());
+        } catch (Exception e) {
+            LOGGER.warning("Failed to register CometLootChestBreakCleanupSystem: " + e.getMessage());
+        }
+
         this.fallingSystem = null;
 
         CometConfig config = CometConfig.load();
@@ -268,6 +297,7 @@ public class CometModPlugin extends JavaPlugin {
         if (fallingCheckTask != null) fallingCheckTask.cancel(false);
         if (spawnTask != null) spawnTask.stop();
         if (fixedSpawnManager != null) fixedSpawnManager.stop();
+        CometLootChestService.getInstance().clear();
         waveManager.cleanup();
     }
 
