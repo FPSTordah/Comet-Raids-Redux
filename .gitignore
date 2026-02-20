@@ -12,3 +12,6 @@ tools/
 
 # Agent
 .agent/
+
+# Local project docs
+PROJECT_INDEX.md

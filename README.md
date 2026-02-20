@@ -6,16 +6,23 @@ Ever wanted random events to spice up your Hytale gameplay? This mod adds fallin
 
 This mod is built for players who want a raid-like experience and server owners who want a customizable reward system. You can create your own custom themes, define multi-wave encounters, override loot tables per theme, and tweak every aspect of the spawning and combat. Check the bottom of `comet_config.json` for examples of custom wave configurations.
 
-> **Note:** This mod has only been tested in singleplayer. Multiplayer functionality should work but hasn't been thoroughly tested. If you run into bugs, please report them!
-
 ## Features
 
 - **4 Comet Tiers** - Uncommon, Rare, Epic, and Legendary. Higher tiers = tougher fights, better loot.
 - **Themed Waves** - Skeletons, goblins, spiders, trorks, outlanders, undead hordes... each comet picks a random theme (or you can force one).
 - **Multi-Wave Combat** - Enemies spawn in waves. Clear one, the next begins. Rewards drop after the final wave.
-- **Timed Reward Chest** - Final rewards spawn in a shared comet chest. It expires after 20 seconds of inactivity; each touch/open resets the timer.
+- **Timed Reward Chest** - Final rewards spawn in a per-comet chest instance. It expires after 20 seconds of inactivity; each touch/open resets the timer.
 - **Map Markers** - Comets show up on your map so you can track them down.
 - **Fully Configurable** - Spawn rates, enemy counts, loot tables, despawn timers... tweak it all.
+
+## Reward Chest Behavior
+
+When a comet encounter is cleared, the reward chest system works like this:
+
+- A reward chest drops at the comet completion location.
+- Each comet creates its own chest instance with loot generated for that comet's tier/theme.
+- The chest is interactable and tracked by the mod's timed chest manager.
+
 
 ## Quick Start
 
@@ -367,7 +374,7 @@ This project is being maintained under MIT permission from the original owner.
 
 Original mod created by **Frog**.
 
-Current continuation and maintenance: **Comet_Raids_Redux**.
+Current continuation and maintenance: **Tordah**.
 
 Ty to Pferd for balancing this Mod.
 
