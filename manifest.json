@@ -1,12 +1,12 @@
 {
   "Group": "CustomMod",
   "Name": "Comet_Raids_Redux",
-  "Version": "2.0",
+  "Version": "2.0.1",
   "Description": "Comet_Raids_Redux - continued development of Comet Raids",
   "Authors": [
     {
       "Name": "Tordah"
-    },
+    }
   ],
   "Website": "",
   "Dependencies": {},

@@ -39,11 +39,11 @@ mvn clean package
 
 Build output:
 
-- `target/Comet_Raids_Redux-2.0.jar`
+- `target/Comet_Raids_Redux-2.0.1.jar`
 
 ### Deploy
 
-Place `target/Comet_Raids_Redux-2.0.jar` in your server mods/plugins location, replacing the old jar, then restart the server.
+Place `target/Comet_Raids_Redux-2.0.1.jar` in your server mods/plugins location, replacing the old jar, then restart the server.
 
 ### IDE
 
@@ -174,7 +174,7 @@ mvn clean package
 
 This creates:
 
-- `target/Comet_Raids_Redux-2.0.jar`
+- `target/Comet_Raids_Redux-2.0.1.jar`
 
 The output JAR includes:
 
