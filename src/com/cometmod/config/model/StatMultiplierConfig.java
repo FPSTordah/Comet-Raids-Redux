@@ -103,7 +103,7 @@ public class StatMultiplierConfig {
             String statMultJson = json.substring(openBrace + 1, closeBrace);
 
             // Parse each tier
-            for (int tier = 1; tier <= 4; tier++) {
+            for (int tier = 1; tier <= 5; tier++) {
                 String tierKey = "\"" + tier + "\"";
                 int tierStart = statMultJson.indexOf(tierKey);
                 if (tierStart < 0)

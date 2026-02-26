@@ -14,6 +14,7 @@ import com.hypixel.hytale.server.core.universe.world.WorldMapTracker;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.component.Store;
 import com.cometmod.config.model.ZoneSpawnChances;
+import com.cometmod.integration.WorldProtectRegionGuard;
 
 import java.util.*;
 import java.util.concurrent.ScheduledFuture;
@@ -87,15 +88,6 @@ public class CometSpawnTask {
         this.maxDelaySeconds = max;
     }
     
-    // Legacy getters (for compatibility)
-    public int getMinSeconds() {
-        return minDelaySeconds;
-    }
-    
-    public int getMaxSeconds() {
-        return maxDelaySeconds;
-    }
-    
     public void start() {
         if (future != null && !future.isCancelled()) {
             return;
@@ -127,8 +119,10 @@ public class CometSpawnTask {
     
     private void checkAndSpawn() {
         try {
-            // Check if natural spawns are enabled
             CometConfig config = CometConfig.getInstance();
+            WorldProtectRegionGuard.syncKnownRegions(config);
+
+            // Check if natural spawns are enabled
             if (config != null && !config.naturalSpawnsEnabled) {
                 scheduleNextSpawn();
                 return;
@@ -178,13 +172,19 @@ public class CometSpawnTask {
             String zoneName = zoneInfo != null ? zoneInfo.zoneName() : null;
             String regionName = zoneInfo != null ? zoneInfo.regionName() : null;
             
-            // Parse zone ID from region name first (e.g., "Zone4_Tier4" -> 4), then fallback to zone name
-            int zoneId = parseZoneId(regionName);
-            if (zoneId == 0 && zoneName != null) {
-                zoneId = parseZoneId(zoneName);
+            // Parse zone ID from region name first (e.g., "Zone4_Tier4" -> 4), then
+            // from zone name.
+            int parsedZoneId = parseZoneId(regionName);
+            if (parsedZoneId < 0 && zoneName != null) {
+                parsedZoneId = parseZoneId(zoneName);
             }
+            final int zoneId = parsedZoneId;
             
             CometTier tier = selectTierForZone(zoneId);
+            if (tier == null) {
+                LOGGER.info("Skipping natural comet spawn: no configured tier chances for zone " + zoneId);
+                return;
+            }
             World currentWorld = player.getWorld();
             if (currentWorld == null) {
                 LOGGER.warning("Player " + player.getDisplayName() + " is not in any world, cannot spawn comet");
@@ -194,7 +194,7 @@ public class CometSpawnTask {
             // Try to execute spawn logic on world thread with retry mechanism
             try {
                 currentWorld.execute(() -> {
-                    executeSpawnLogic(player, tier);
+                    executeSpawnLogic(player, tier, zoneId);
                 });
                 // Success! No retry needed
             } catch (Exception e) {
@@ -237,7 +237,7 @@ public class CometSpawnTask {
         }
     }
     
-    private void executeSpawnLogic(Player player, CometTier tier) {
+    private void executeSpawnLogic(Player player, CometTier tier, int zoneId) {
         try {
             World currentWorld = player.getWorld();
             if (currentWorld == null) return;
@@ -256,6 +256,7 @@ public class CometSpawnTask {
             com.hypixel.hytale.math.vector.Vector3d playerPos = transform.getPosition();
             Random random = new Random();
             com.hypixel.hytale.math.vector.Vector3i targetBlockPos = null;
+            CometConfig config = CometConfig.getInstance();
 
             for (int attempt = 0; attempt < 16; attempt++) {
                 double angle = random.nextDouble() * 2 * Math.PI;
@@ -269,10 +270,20 @@ public class CometSpawnTask {
                 if (isInWater(currentWorld, spawnX, spawnY, spawnZ) || isInWater(currentWorld, spawnX, spawnY + 1, spawnZ)) continue;
 
                 targetBlockPos = new com.hypixel.hytale.math.vector.Vector3i(spawnX, spawnY + 1, spawnZ);
+                if (!WorldProtectRegionGuard.canSpawnAt(currentWorld, targetBlockPos.x, targetBlockPos.y, targetBlockPos.z, config)) {
+                    targetBlockPos = null;
+                    continue;
+                }
                 break;
             }
 
             if (targetBlockPos == null) return;
+
+            // Register zone for this comet at its landing position
+            CometWaveManager waveManager = CometModPlugin.getWaveManager();
+            if (waveManager != null) {
+                waveManager.registerCometZone(targetBlockPos, zoneId);
+            }
             
             CometFallingSystem fallingSystem = CometModPlugin.getFallingSystem();
             if (fallingSystem == null) {
@@ -290,7 +301,7 @@ public class CometSpawnTask {
             }
 
             java.util.UUID ownerUUID = player.getUuid();
-            fallingSystem.spawnFallingComet(playerRef, targetBlockPos, tier, null, currentStore, currentWorld, ownerUUID);
+            fallingSystem.spawnFallingComet(playerRef, targetBlockPos, tier, null, currentStore, currentWorld, ownerUUID, zoneId);
 
             try {
                 java.lang.reflect.Method consumeMethod = commandBuffer.getClass().getDeclaredMethod("consume");
@@ -349,7 +360,7 @@ public class CometSpawnTask {
     }
 
     private int parseZoneId(String name) {
-        if (name == null || name.isEmpty()) return 0;
+        if (name == null || name.isEmpty()) return -1;
 
         java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("(?i)zone(\\d+)");
         java.util.regex.Matcher matcher = pattern.matcher(name);
@@ -373,15 +384,39 @@ public class CometSpawnTask {
             }
         }
 
-        return 0;
+        return -1;
     }
 
     private CometTier selectTierForZone(int zoneId) {
         Random random = new Random();
         CometConfig config = CometConfig.getInstance();
-        ZoneSpawnChances chances = (config != null)
-            ? config.getZoneSpawnChances(zoneId)
-            : ZoneSpawnChances.getDefaultForZone(zoneId);
+        if (config == null) {
+            return null;
+        }
+
+        ZoneSpawnChances chances = config.getZoneSpawnChances(zoneId);
+        if (chances == null) {
+            return null;
+        }
+
+        if (!CometConfig.isTier5Enabled()) {
+            double t1 = chances.getTier1();
+            double t2 = chances.getTier2();
+            double t3 = chances.getTier3();
+            double t4 = chances.getTier4();
+            double total = t1 + t2 + t3 + t4;
+            if (total <= 0.0) {
+                return null;
+            }
+
+            double roll = random.nextDouble() * total;
+            if (roll < t1) return CometTier.UNCOMMON;
+            roll -= t1;
+            if (roll < t2) return CometTier.RARE;
+            roll -= t2;
+            if (roll < t3) return CometTier.EPIC;
+            return CometTier.LEGENDARY;
+        }
 
         int selectedTier = chances.selectTier(random);
         switch (selectedTier) {
@@ -389,7 +424,8 @@ public class CometSpawnTask {
             case 2: return CometTier.RARE;
             case 3: return CometTier.EPIC;
             case 4: return CometTier.LEGENDARY;
-            default: return CometTier.UNCOMMON;
+            case 5: return CometTier.MYTHIC;
+            default: return null;
         }
     }
 

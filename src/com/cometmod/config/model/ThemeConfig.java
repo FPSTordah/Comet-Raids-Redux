@@ -189,47 +189,24 @@ public class ThemeConfig {
 
     /**
      * Get the total number of waves in this theme.
-     * Returns 2 for legacy themes (1 normal + 1 boss), or waves.size() for multi-wave.
      *
      * @return Total wave count
      */
     public int getWaveCount() {
-        if (hasMultiWave()) {
-            return waves.size();
-        }
-        return 2; // Legacy: 1 normal wave + 1 boss wave
+        return waves != null ? waves.size() : 0;
     }
 
     /**
      * Get a specific wave entry by index (0-based).
-     * For legacy themes, wave 0 returns a synthesized normal wave from mobs,
-     * and wave 1 returns a synthesized boss wave from bosses.
      *
      * @param waveIndex The wave index (0-based)
      * @return WaveEntry for the requested wave, or null if invalid index
      */
     public WaveEntry getWave(int waveIndex) {
-        if (hasMultiWave()) {
-            if (waveIndex >= 0 && waveIndex < waves.size()) {
-                return waves.get(waveIndex);
-            }
+        if (waves == null || waveIndex < 0 || waveIndex >= waves.size()) {
             return null;
         }
-
-        // Legacy compatibility: synthesize WaveEntry from mobs/bosses
-        if (waveIndex == 0) {
-            // Wave 0: normal wave with mobs
-            WaveEntry legacyNormal = new WaveEntry(WaveEntry.WaveType.NORMAL);
-            legacyNormal.setMobs(mobs);
-            return legacyNormal;
-        } else if (waveIndex == 1) {
-            // Wave 1: boss wave with bosses
-            WaveEntry legacyBoss = new WaveEntry(WaveEntry.WaveType.BOSS);
-            legacyBoss.setBosses(bosses);
-            legacyBoss.setRandomBossSelection(randomBossSelection);
-            return legacyBoss;
-        }
-        return null;
+        return waves.get(waveIndex);
     }
 
     /**
@@ -238,14 +215,14 @@ public class ThemeConfig {
      * @return Count of normal waves
      */
     public int getNormalWaveCount() {
-        if (hasMultiWave()) {
-            int count = 0;
-            for (WaveEntry wave : waves) {
-                if (wave.isNormalWave()) count++;
-            }
-            return count;
+        int count = 0;
+        if (waves == null) {
+            return 0;
         }
-        return 1; // Legacy: 1 normal wave
+        for (WaveEntry wave : waves) {
+            if (wave.isNormalWave()) count++;
+        }
+        return count;
     }
 
     /**
@@ -254,14 +231,14 @@ public class ThemeConfig {
      * @return Count of boss waves
      */
     public int getBossWaveCount() {
-        if (hasMultiWave()) {
-            int count = 0;
-            for (WaveEntry wave : waves) {
-                if (wave.isBossWave()) count++;
-            }
-            return count;
+        int count = 0;
+        if (waves == null) {
+            return 0;
         }
-        return 1; // Legacy: 1 boss wave
+        for (WaveEntry wave : waves) {
+            if (wave.isBossWave()) count++;
+        }
+        return count;
     }
 
     /**
@@ -287,8 +264,7 @@ public class ThemeConfig {
     }
 
     /**
-     * Get total mob count for wave 1 (legacy method without tier)
-     * Uses simple count value
+     * Get total mob count for wave 1 using simple count values.
      */
     public int getTotalMobCount() {
         int total = 0;
@@ -317,14 +293,11 @@ public class ThemeConfig {
             String mobId = mob.getId();
             // Get count for this tier (uses tier-based count if available, otherwise simple count)
             int count = mob.getCountForTier(cometTier);
-            System.out.println("[ThemeConfig] " + id + " tier " + cometTier + ": " + mobId + " = " + count + " (tierCounts: " + mob.getTierCounts() + ", simpleCount: " + mob.getCount() + ")");
             // Add the mob ID 'count' times
             for (int i = 0; i < count; i++) {
                 result.add(mobId);
             }
         }
-
-        System.out.println("[ThemeConfig] Total for tier " + cometTier + ": " + result.size() + " mobs");
         return result.toArray(new String[0]);
     }
 
@@ -351,7 +324,6 @@ public class ThemeConfig {
             if (!validBosses.isEmpty()) {
                 BossEntry selectedBoss = validBosses.get(new java.util.Random().nextInt(validBosses.size()));
                 result.add(selectedBoss.getId());
-                System.out.println("[ThemeConfig] Random boss selection for " + id + " tier " + cometTier + ": " + selectedBoss.getId());
             }
         } else {
             // Spawn all bosses
@@ -381,9 +353,9 @@ public class ThemeConfig {
             errors.add("Theme '" + id + "' has no tiers defined");
         }
 
-        // Multi-wave themes only need waves defined, legacy themes need mobs/bosses
-        if (hasMultiWave()) {
-            // Validate each wave has content
+        if (waves == null || waves.isEmpty()) {
+            errors.add("Theme '" + id + "' has no waves defined");
+        } else {
             for (int i = 0; i < waves.size(); i++) {
                 WaveEntry wave = waves.get(i);
                 if (wave.isNormalWave() && (wave.getMobs() == null || wave.getMobs().isEmpty())) {
@@ -392,14 +364,6 @@ public class ThemeConfig {
                 if (wave.isBossWave() && (wave.getBosses() == null || wave.getBosses().isEmpty())) {
                     errors.add("Theme '" + id + "' wave " + i + " (boss) has no bosses defined");
                 }
-            }
-        } else {
-            // Legacy validation
-            if (mobs == null || mobs.isEmpty()) {
-                errors.add("Theme '" + id + "' has no mobs defined");
-            }
-            if (bosses == null || bosses.isEmpty()) {
-                errors.add("Theme '" + id + "' has no bosses defined");
             }
         }
 

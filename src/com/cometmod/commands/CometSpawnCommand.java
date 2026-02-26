@@ -20,9 +20,11 @@ import com.hypixel.hytale.server.core.command.system.basecommands.AbstractWorldC
 import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.World;
+import com.hypixel.hytale.server.core.universe.world.WorldMapTracker;
 import com.hypixel.hytale.server.core.universe.world.chunk.WorldChunk;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.core.util.EventTitleUtil;
+import com.cometmod.integration.WorldProtectRegionGuard;
 
 import javax.annotation.Nonnull;
 import java.util.Random;
@@ -42,7 +44,8 @@ public class CometSpawnCommand extends AbstractWorldCommand {
 
     public CometSpawnCommand() {
         super("spawn", "Spawns a comet near the player");
-        this.tierArg = withOptionalArg("tier", "Tier of the comet (Uncommon, Epic, Rare, Legendary)", ArgTypes.STRING);
+        requirePermission(CometPermissions.SPAWN);
+        this.tierArg = withOptionalArg("tier", "Tier of the comet (Uncommon, Rare, Epic, Legendary, Mythic)", ArgTypes.STRING);
         this.themeArg = withOptionalArg("theme", "Theme of the wave (e.g. Skeleton, Goblin, Spider)", ArgTypes.STRING);
         this.onMeArg = withOptionalArg("onme", "Use --onme true to spawn comet directly above the player", ArgTypes.STRING);
     }
@@ -69,10 +72,18 @@ public class CometSpawnCommand extends AbstractWorldCommand {
                 // Validate: if tier is still UNCOMMON but the arg wasn't "uncommon", it's
                 // invalid
                 if (tier == CometTier.UNCOMMON && !tierString.equalsIgnoreCase("uncommon")) {
-                    context.sendMessage(Message.raw("Invalid tier! Valid tiers: Uncommon, Epic, Rare, Legendary"));
+                    String validTiers = CometConfig.isTier5Enabled()
+                            ? "Uncommon, Rare, Epic, Legendary, Mythic"
+                            : "Uncommon, Rare, Epic, Legendary";
+                    context.sendMessage(Message.raw("Invalid tier! Valid tiers: " + validTiers));
                     return;
                 }
             }
+        }
+
+        if (tier == CometTier.MYTHIC && !CometConfig.isTier5Enabled()) {
+            context.sendMessage(Message.raw("Mythic/Tier 5 is disabled because Endgame&QoL is not installed."));
+            return;
         }
 
         // Get theme from argument (optional) - now uses string-based theme IDs
@@ -119,9 +130,11 @@ public class CometSpawnCommand extends AbstractWorldCommand {
                 return;
             }
             Vector3d playerPos = transform.getPosition();
+            int zoneId = resolvePlayerZoneId(player);
 
             // Check if --onme flag is provided (spawn directly above player)
             boolean spawnOnPlayer = onMeArg.provided(context);
+            CometConfig config = CometConfig.getInstance();
 
             int spawnX = 0, spawnY = -1, spawnZ = 0;
             boolean foundValidLocation = false;
@@ -131,8 +144,15 @@ public class CometSpawnCommand extends AbstractWorldCommand {
                 spawnX = (int) playerPos.x;
                 spawnZ = (int) playerPos.z;
                 spawnY = (int) playerPos.y;
+                int targetY = spawnY + 1;
+                if (!WorldProtectRegionGuard.canSpawnAt(world, spawnX, targetY, spawnZ, config)) {
+                    String blockedRegion = WorldProtectRegionGuard.getPrimaryRegionIdAt(world, spawnX, targetY, spawnZ);
+                    context.sendMessage(Message.raw(
+                            "Comet blocked by protected-zone rules in region: " +
+                                    (blockedRegion != null ? blockedRegion : "unknown")));
+                    return;
+                }
                 foundValidLocation = true;
-                LOGGER.info("Spawning comet directly above player at X=" + spawnX + ", Z=" + spawnZ);
             } else {
                 // Override for manual spawn command to keep it close (5-8 blocks)
                 int minDist = 5;
@@ -149,6 +169,8 @@ public class CometSpawnCommand extends AbstractWorldCommand {
                         continue;
                     if (isInWater(world, x, y, z) || isInWater(world, x, y + 1, z))
                         continue;
+                    if (!WorldProtectRegionGuard.canSpawnAt(world, x, y + 1, z, config))
+                        continue;
                     spawnX = x;
                     spawnY = y;
                     spawnZ = z;
@@ -159,7 +181,7 @@ public class CometSpawnCommand extends AbstractWorldCommand {
 
             if (!foundValidLocation) {
                 context.sendMessage(
-                        Message.raw("Error: Could not find valid spawn location (ground or water) after 16 attempts!"));
+                        Message.raw("Error: Could not find valid spawn location (ground, water, or protected-zone restrictions) after 16 attempts!"));
                 return;
             }
 
@@ -169,7 +191,13 @@ public class CometSpawnCommand extends AbstractWorldCommand {
             if (themeId != null) {
                 CometWaveManager waveManager = CometModPlugin.getWaveManager();
                 if (waveManager != null) {
+                    waveManager.registerCometZone(targetBlockPos, zoneId);
                     waveManager.forceTheme(targetBlockPos, themeId);
+                }
+            } else {
+                CometWaveManager waveManager = CometModPlugin.getWaveManager();
+                if (waveManager != null) {
+                    waveManager.registerCometZone(targetBlockPos, zoneId);
                 }
             }
 
@@ -217,13 +245,13 @@ public class CometSpawnCommand extends AbstractWorldCommand {
                         .invoke(store);
             } catch (Exception e) {
                 LOGGER.warning("Could not get command buffer: " + e.getMessage());
-                spawnCometBlockDirectly(world, targetBlockPos, store, tier, themeId, ownerUUID);
+                spawnCometBlockDirectly(world, targetBlockPos, store, tier, themeId, ownerUUID, zoneId);
                 return;
             }
 
             Object externalData = commandBuffer.getExternalData();
             if (!(externalData instanceof com.hypixel.hytale.server.core.universe.world.storage.EntityStore)) {
-                spawnCometBlockDirectly(world, targetBlockPos, store, tier, themeId, ownerUUID);
+                spawnCometBlockDirectly(world, targetBlockPos, store, tier, themeId, ownerUUID, zoneId);
                 return;
             }
 
@@ -235,13 +263,13 @@ public class CometSpawnCommand extends AbstractWorldCommand {
 
                 if (projectileRef != null) {
                     fallingSystem.trackProjectile(projectileUUID, targetBlockPos, spawnPos.y, finalTier, themeId,
-                            ownerUUID);
+                            ownerUUID, zoneId);
                 } else {
-                    spawnCometBlockDirectly(world, targetBlockPos, store, finalTier, themeId, ownerUUID);
+                    spawnCometBlockDirectly(world, targetBlockPos, store, finalTier, themeId, ownerUUID, zoneId);
                 }
             } catch (Exception e) {
                 LOGGER.severe("Error spawning projectile: " + e.getMessage());
-                spawnCometBlockDirectly(world, targetBlockPos, store, finalTier, themeId, ownerUUID);
+                spawnCometBlockDirectly(world, targetBlockPos, store, finalTier, themeId, ownerUUID, zoneId);
             } finally {
                 if (commandBuffer != null) {
                     try {
@@ -352,7 +380,7 @@ public class CometSpawnCommand extends AbstractWorldCommand {
     }
 
     private void spawnCometBlockDirectly(World world, Vector3i blockPos, Store<EntityStore> store, CometTier tier,
-            String themeId, java.util.UUID ownerUUID) {
+            String themeId, java.util.UUID ownerUUID, int zoneId) {
         world.execute(() -> {
             try {
                 long chunkIndex = com.hypixel.hytale.math.util.ChunkUtil.indexChunkFromBlock(
@@ -391,28 +419,10 @@ public class CometSpawnCommand extends AbstractWorldCommand {
 
                 chunk.setBlock(localX, blockPos.y, localZ, blockId, blockType, 0, 0, 0);
                 chunk.markNeedsSaving();
-                LOGGER.warning("[DEBUG-COMET-SPAWN] (/comet spawn) Placed comet block id=" + blockIdName + " tier=" +
-                        tier.getName() + " at " + blockPos + " (world=" + world.getName() + ")");
-
-                // Beam debug: keep this aligned with current beam asset config.
-                String beamSystem = tier.getBeamParticleSystem();
-                double blockParticleOffsetY = 0.5;
-                double systemSpawnerOffsetY = -1.0;
-                double beamScaleY = 999.0;
-                double beamCenterY = blockPos.y + blockParticleOffsetY + systemSpawnerOffsetY;
-                double beamStartY = beamCenterY - (beamScaleY / 2.0);
-                double beamEndY = beamCenterY + (beamScaleY / 2.0);
-                String beamSystemPath = "Server/Particles/" + beamSystem + "/" + beamSystem + ".particlesystem";
-                LOGGER.warning("[DEBUG-BEAM-SPAWN] (/comet spawn) tier=" + tier.getName() +
-                        " systemId=" + beamSystem +
-                        " cometPos=" + blockPos +
-                        " beamStartY=" + beamStartY +
-                        " beamCenterY=" + beamCenterY +
-                        " beamEndY=" + beamEndY +
-                        " systemPath=" + beamSystemPath);
 
                 CometWaveManager waveManager = CometModPlugin.getWaveManager();
                 if (waveManager != null) {
+                    waveManager.registerCometZone(blockPos, zoneId);
                     waveManager.registerCometTier(world, blockPos, tier, ownerUUID);
                     if (themeId != null) {
                         waveManager.forceTheme(blockPos, themeId);
@@ -438,5 +448,51 @@ public class CometSpawnCommand extends AbstractWorldCommand {
                 e.printStackTrace();
             }
         });
+    }
+
+    private int resolvePlayerZoneId(Player player) {
+        try {
+            WorldMapTracker tracker = player.getWorldMapTracker();
+            WorldMapTracker.ZoneDiscoveryInfo zoneInfo = tracker != null ? tracker.getCurrentZone() : null;
+
+            String regionName = zoneInfo != null ? zoneInfo.regionName() : null;
+            String zoneName = zoneInfo != null ? zoneInfo.zoneName() : null;
+
+            int parsed = parseZoneId(regionName);
+            if (parsed < 0) {
+                parsed = parseZoneId(zoneName);
+            }
+            return parsed >= 0 ? parsed : 0;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    private int parseZoneId(String name) {
+        if (name == null || name.isEmpty()) {
+            return -1;
+        }
+
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("(?i)zone(\\d+)");
+        java.util.regex.Matcher matcher = pattern.matcher(name);
+        if (matcher.find()) {
+            try {
+                return Integer.parseInt(matcher.group(1));
+            } catch (NumberFormatException e) {
+                // Fall through
+            }
+        }
+
+        java.util.regex.Pattern fallbackPattern = java.util.regex.Pattern.compile("\\d+");
+        java.util.regex.Matcher fallbackMatcher = fallbackPattern.matcher(name);
+        if (fallbackMatcher.find()) {
+            try {
+                return Integer.parseInt(fallbackMatcher.group());
+            } catch (NumberFormatException e) {
+                // Fall through
+            }
+        }
+
+        return -1;
     }
 }

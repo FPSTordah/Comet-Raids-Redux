@@ -29,6 +29,7 @@ public class CometTestCommand extends AbstractWorldCommand {
     
     public CometTestCommand() {
         super("test", "Test automatic comet spawning (simulates zone-based spawn)");
+        requirePermission(CometPermissions.TEST);
     }
     
     @Override

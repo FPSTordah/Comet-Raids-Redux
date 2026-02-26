@@ -3,6 +3,7 @@ build.bat
 build/
 dist/
 target/
+libs/
 /com/
 !src/com/
 !src/com/**

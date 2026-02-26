@@ -129,6 +129,8 @@ public class CometMarkerProvider implements WorldMapManager.MarkerProvider {
                 return "Comet_Stone_Rare.png";
             case LEGENDARY:
                 return "Comet_Stone_Legendary.png";
+            case MYTHIC:
+                return "Comet_Stone_Mythic.png";
             default:
                 return "Comet_Stone_Uncommon.png";
         }

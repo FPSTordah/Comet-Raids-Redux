@@ -17,10 +17,16 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import com.cometmod.config.model.BossEntry;
 import com.cometmod.config.defaults.DefaultThemes;
@@ -31,8 +37,14 @@ import com.cometmod.config.model.ThemeConfig;
 import com.cometmod.config.parser.ThemeConfigParser;
 import com.cometmod.config.parser.ThemeConfigWriter;
 import com.cometmod.config.model.TierSettings;
+import com.cometmod.config.model.TierStatScalingConfig;
 import com.cometmod.config.model.TierRewards;
+import com.cometmod.config.model.RewardEntry;
 import com.cometmod.config.model.ZoneSpawnChances;
+import com.cometmod.config.model.TierInheritanceWeights;
+import com.hypixel.hytale.common.plugin.PluginIdentifier;
+import com.hypixel.hytale.common.semver.SemverRange;
+import com.hypixel.hytale.server.core.plugin.PluginManager;
 
 /**
  * Configuration manager for Comet Mod settings.
@@ -44,9 +56,14 @@ public class CometConfig {
 
     private static final Logger LOGGER = Logger.getLogger("CometConfig");
     private static final String CONFIG_FILE_NAME = "comet_config.json";
+    private static final String THEMES_CONFIG_FILE_NAME = "comet_themes_and_monster_groups.json";
+    private static final String ENDGAME_QOL_GROUP = "Config";
+    private static final String ENDGAME_QOL_NAME = "Endgame&QoL";
+    private static final String ENDGAME_QOL_PLUGIN_CLASS = "endgame.plugin.EndgameQoL";
 
     // Singleton instance for global access
     private static CometConfig instance;
+    private static volatile boolean tier5Enabled = detectTier5Availability();
 
     // Spawn settings (existing)
     public int minDelaySeconds = 120;
@@ -65,6 +82,7 @@ public class CometConfig {
     // Theme configurations (new)
     private Map<String, ThemeConfig> themes = new LinkedHashMap<>();
     private List<ThemeConfig> themeList = new ArrayList<>(); // Ordered list for random selection
+    private TierStatScalingConfig tierStatScaling = new TierStatScalingConfig();
 
     // Tier settings (new)
     private Map<Integer, TierSettings> tierSettings = new LinkedHashMap<>();
@@ -74,6 +92,17 @@ public class CometConfig {
 
     // Zone spawn chances (configurable tier probabilities per zone)
     private Map<String, ZoneSpawnChances> zoneSpawnChances = new LinkedHashMap<>();
+
+    // Per-zone base loot pools (zone identity)
+    private Map<String, TierRewards> zoneBaseLootPools = new LinkedHashMap<>();
+
+    // Per-current-tier lower-tier inclusion chances
+    private Map<Integer, TierInheritanceWeights> tierInheritanceWeights = new LinkedHashMap<>();
+
+    // Optional WorldProtect integration: control comet spawning inside protected regions
+    private boolean protectedZoneSpawnRulesEnabled = false;
+    private boolean protectedZoneDefaultInProtectedRegion = true;
+    private Map<String, Boolean> protectedZoneRegionOverrides = new LinkedHashMap<>();
 
     // Bench recipes (new)
 
@@ -146,11 +175,20 @@ public class CometConfig {
         return new File(fallbackModFolder, CONFIG_FILE_NAME);
     }
 
+    private static File getThemesConfigFile(File configFile) {
+        File parent = configFile != null ? configFile.getParentFile() : null;
+        if (parent == null) {
+            return new File(THEMES_CONFIG_FILE_NAME);
+        }
+        return new File(parent, THEMES_CONFIG_FILE_NAME);
+    }
+
     /**
      * Load configuration from file, or create with defaults if file doesn't exist.
      * Config file is the single source of truth after creation.
      */
     public static CometConfig load() {
+        refreshTier5Availability();
         File configFile = getConfigFile();
         CometConfig config = new CometConfig();
 
@@ -159,23 +197,8 @@ public class CometConfig {
                 String content = new String(java.nio.file.Files.readAllBytes(configFile.toPath()));
                 logValidationReport("comet_config.json", ConfigValidator.validateCometConfig(content));
                 config = parseJson(content);
+                loadThemesFromSeparateFile(config, configFile);
                 LOGGER.info("Loaded Comet Mod configuration from: " + configFile.getAbsolutePath());
-
-                // Log spawn settings
-                LOGGER.info("  Spawn Settings:");
-                LOGGER.info("    minDelaySeconds: " + config.minDelaySeconds);
-                LOGGER.info("    maxDelaySeconds: " + config.maxDelaySeconds);
-                LOGGER.info("    spawnChance: " + config.spawnChance);
-                LOGGER.info("    despawnTimeMinutes: " + config.despawnTimeMinutes);
-                LOGGER.info("    minSpawnDistance: " + config.minSpawnDistance);
-                LOGGER.info("    maxSpawnDistance: " + config.maxSpawnDistance);
-
-                // Log themes
-                LOGGER.info("  Themes loaded: " + config.themes.size());
-                for (ThemeConfig theme : config.themes.values()) {
-                    LOGGER.info("    - " + theme.getId() + " (" + theme.getDisplayName() + ") - Tiers: "
-                            + theme.getTiers());
-                }
 
                 // Warn if no themes
                 if (config.themes.isEmpty()) {
@@ -186,11 +209,13 @@ public class CometConfig {
                 LOGGER.warning("Failed to load config file, using defaults: " + e.getMessage());
                 e.printStackTrace();
                 config = createDefaultConfig();
+                saveThemesConfig(config, getThemesConfigFile(configFile));
                 config.save();
             }
         } else {
             LOGGER.info("Config file not found, creating default config at: " + configFile.getAbsolutePath());
             config = createDefaultConfig();
+            saveThemesConfig(config, getThemesConfigFile(configFile));
             config.save();
         }
 
@@ -198,14 +223,57 @@ public class CometConfig {
         return config;
     }
 
+    public static boolean isTier5Enabled() {
+        return tier5Enabled;
+    }
+
+    public static synchronized void refreshTier5Availability() {
+        boolean previous = tier5Enabled;
+        tier5Enabled = detectTier5Availability();
+
+        if (tier5Enabled && !previous) {
+            LOGGER.info("Tier 5/Mythic enabled (Endgame&QoL detected).");
+        } else if (!tier5Enabled && previous) {
+            LOGGER.warning("Tier 5/Mythic disabled (Endgame&QoL not detected).");
+        }
+    }
+
+    public static CometTier clampUnavailableTier(CometTier requestedTier) {
+        if (requestedTier == null) {
+            return CometTier.UNCOMMON;
+        }
+        if (requestedTier == CometTier.MYTHIC && !tier5Enabled) {
+            return CometTier.LEGENDARY;
+        }
+        return requestedTier;
+    }
+
+    private static boolean detectTier5Availability() {
+        try {
+            PluginManager pluginManager = PluginManager.get();
+            if (pluginManager != null) {
+                PluginIdentifier id = new PluginIdentifier(ENDGAME_QOL_GROUP, ENDGAME_QOL_NAME);
+                if (pluginManager.hasPlugin(id, SemverRange.WILDCARD)) {
+                    return true;
+                }
+            }
+        } catch (Throwable ignored) {
+            // Fallback below.
+        }
+
+        try {
+            Class.forName(ENDGAME_QOL_PLUGIN_CLASS, false, CometConfig.class.getClassLoader());
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
     private static void logValidationReport(String fileName, ConfigValidationReport report) {
         if (report == null || report.isClean()) {
             return;
         }
 
-        for (String info : report.getInfos()) {
-            LOGGER.info("[ConfigValidation][" + fileName + "] " + info);
-        }
         for (String warning : report.getWarnings()) {
             LOGGER.warning("[ConfigValidation][" + fileName + "] " + warning);
         }
@@ -224,6 +292,9 @@ public class CometConfig {
         config.tierSettings = DefaultThemes.getDefaultTierSettings();
         config.rewardSettings = getDefaultRewardSettings();
         config.zoneSpawnChances = ZoneSpawnChances.generateDefaults();
+        config.zoneBaseLootPools = getDefaultZoneBaseLootPools();
+        config.tierInheritanceWeights = getDefaultTierInheritanceWeights();
+        config.tierStatScaling = new TierStatScalingConfig();
         config.themesLoaded = true;
         return config;
     }
@@ -282,11 +353,41 @@ public class CometConfig {
 
             // Parse reward settings
             config.rewardSettings = ThemeConfigParser.parseRewardSettings(json);
-            LOGGER.info("Loaded reward settings for " + config.rewardSettings.size() + " tiers");
 
             // Parse zone spawn chances
             config.zoneSpawnChances = ThemeConfigParser.parseZoneSpawnChances(json);
-            LOGGER.info("Loaded zone spawn chances for " + config.zoneSpawnChances.size() + " zones");
+
+            // Parse new zone base loot pools
+            config.zoneBaseLootPools = ThemeConfigParser.parseZoneBaseLootPools(json);
+
+            // Parse new per-tier inheritance chances
+            config.tierInheritanceWeights = ThemeConfigParser.parseTierInheritanceWeights(json);
+
+            if (config.zoneBaseLootPools.isEmpty()) {
+                config.zoneBaseLootPools = getDefaultZoneBaseLootPools();
+            }
+            if (config.tierInheritanceWeights.isEmpty()) {
+                config.tierInheritanceWeights = getDefaultTierInheritanceWeights();
+            }
+
+            // Parse optional WorldProtect spawn rules
+            String worldProtectRules = extractJsonObject(json, "worldProtectSpawnRules");
+            if (worldProtectRules != null) {
+                Boolean enabled = extractBooleanValue(worldProtectRules, "enabled");
+                if (enabled != null) {
+                    config.protectedZoneSpawnRulesEnabled = enabled;
+                }
+
+                Boolean defaultInProtectedRegion = extractBooleanValue(worldProtectRules, "defaultInWorldProtectRegion");
+                if (defaultInProtectedRegion != null) {
+                    config.protectedZoneDefaultInProtectedRegion = defaultInProtectedRegion;
+                }
+
+                String regionOverrides = extractJsonObject(worldProtectRules, "regionOverrides");
+                if (regionOverrides != null) {
+                    config.protectedZoneRegionOverrides = parseProtectedZoneRegionOverrides(regionOverrides);
+                }
+            }
 
         } catch (Exception e) {
             LOGGER.warning("Error parsing JSON: " + e.getMessage());
@@ -321,16 +422,27 @@ public class CometConfig {
         if (zoneSpawnChances.isEmpty()) {
             zoneSpawnChances = ZoneSpawnChances.generateDefaults();
         }
+        if (tierInheritanceWeights.isEmpty()) {
+            tierInheritanceWeights = getDefaultTierInheritanceWeights();
+        }
+        if (zoneBaseLootPools.isEmpty()) {
+            zoneBaseLootPools = getDefaultZoneBaseLootPools();
+        }
 
         try (FileWriter writer = new FileWriter(configFile)) {
             String json = ThemeConfigWriter.generateFullConfig(
                     minDelaySeconds, maxDelaySeconds, spawnChance,
                     despawnTimeMinutes, minSpawnDistance, maxSpawnDistance,
                     naturalSpawnsEnabled, globalComets,
-                    themes, tierSettings, rewardSettings, zoneSpawnChances);
+                    themes, tierSettings, rewardSettings, zoneSpawnChances,
+                    zoneBaseLootPools, tierInheritanceWeights,
+                    protectedZoneSpawnRulesEnabled, protectedZoneDefaultInProtectedRegion,
+                    protectedZoneRegionOverrides);
             writer.write(json);
             writer.flush();
             LOGGER.info("Saved Comet Mod configuration to: " + configFile.getAbsolutePath());
+
+            saveThemesConfig(this, getThemesConfigFile(configFile));
         } catch (IOException e) {
             LOGGER.severe("Failed to save config file: " + e.getMessage());
             e.printStackTrace();
@@ -339,10 +451,120 @@ public class CometConfig {
 
     private static Map<Integer, TierRewards> getDefaultRewardSettings() {
         Map<Integer, TierRewards> defaults = new LinkedHashMap<>();
-        for (int tier = 1; tier <= 4; tier++) {
+        for (int tier = 1; tier <= 5; tier++) {
             defaults.put(tier, TierRewards.getDefaultForTier(tier));
         }
         return defaults;
+    }
+
+    private static Map<String, TierRewards> getDefaultZoneBaseLootPools() {
+        Map<String, TierRewards> defaults = new LinkedHashMap<>();
+
+        TierRewards zone0 = new TierRewards();
+        zone0.addDrop(new RewardEntry("Ingredient_Bar_Copper", 2, 3, 100.0, "Copper Ingots"));
+        zone0.addDrop(new RewardEntry("Ingredient_Leather_Light", 1, 2, 100.0, "Light Leather"));
+        defaults.put("0", zone0);
+
+        TierRewards zone1 = new TierRewards();
+        zone1.addDrop(new RewardEntry("Ingredient_Bar_Iron", 2, 3, 100.0, "Iron Ingots"));
+        zone1.addDrop(new RewardEntry("Ingredient_Leather_Medium", 1, 2, 100.0, "Medium Leather"));
+        defaults.put("1", zone1);
+
+        TierRewards zone2 = new TierRewards();
+        zone2.addDrop(new RewardEntry("Ingredient_Bar_Cobalt", 1, 2, 60.0, "Cobalt Ingots"));
+        zone2.addDrop(new RewardEntry("Ingredient_Bar_Thorium", 1, 2, 60.0, "Thorium Ingots"));
+        zone2.addDrop(new RewardEntry("Ingredient_Leather_Heavy", 1, 2, 100.0, "Heavy Leather"));
+        defaults.put("2", zone2);
+
+        TierRewards zone3 = new TierRewards();
+        zone3.addDrop(new RewardEntry("Ingredient_Bar_Adamantite", 1, 2, 100.0, "Adamantite Ingots"));
+        zone3.addDrop(new RewardEntry("Ingredient_Fire_Essence", 2, 3, 100.0, "Essence of Fire"));
+        zone3.addDrop(new RewardEntry("Ingredient_Fabric_Scrap_Shadoweave", 2, 3, 100.0, "Shadoweave Scraps"));
+        defaults.put("3", zone3);
+
+        return defaults;
+    }
+
+    private static Map<Integer, TierInheritanceWeights> getDefaultTierInheritanceWeights() {
+        Map<Integer, TierInheritanceWeights> defaults = new LinkedHashMap<>();
+        defaults.put(1, new TierInheritanceWeights(1.0, 0.0, 0.0, 0.0, 0.0));
+        defaults.put(2, new TierInheritanceWeights(0.20, 1.0, 0.0, 0.0, 0.0));
+        defaults.put(3, new TierInheritanceWeights(0.10, 0.25, 1.0, 0.0, 0.0));
+        defaults.put(4, new TierInheritanceWeights(0.05, 0.12, 0.30, 1.0, 0.0));
+        defaults.put(5, new TierInheritanceWeights(0.03, 0.08, 0.18, 0.35, 1.0));
+        return defaults;
+    }
+
+    private static Map<String, Boolean> parseProtectedZoneRegionOverrides(String jsonObject) {
+        Map<String, Boolean> overrides = new LinkedHashMap<>();
+        Pattern pairPattern = Pattern.compile("\"([^\"]+)\"\\s*:\\s*(true|false)", Pattern.CASE_INSENSITIVE);
+        Matcher matcher = pairPattern.matcher(jsonObject);
+        while (matcher.find()) {
+            String regionId = matcher.group(1);
+            String boolText = matcher.group(2);
+            if (regionId == null || regionId.isBlank()) {
+                continue;
+            }
+            overrides.put(regionId.toLowerCase(Locale.ROOT), Boolean.parseBoolean(boolText));
+        }
+        return overrides;
+    }
+
+    private static void loadThemesFromSeparateFile(CometConfig config, File baseConfigFile) {
+        if (config == null) {
+            return;
+        }
+
+        File themesFile = getThemesConfigFile(baseConfigFile);
+        if (!themesFile.exists() || !themesFile.isFile()) {
+            saveThemesConfig(config, themesFile);
+            return;
+        }
+
+        try {
+            String themesJson = new String(java.nio.file.Files.readAllBytes(themesFile.toPath()));
+            String themesBlock = extractJsonObject(themesJson, "themes");
+            if (themesBlock == null || themesBlock.isBlank()) {
+                LOGGER.warning("Themes file is missing top-level 'themes' object: " + themesFile.getAbsolutePath());
+                return;
+            }
+
+            Map<String, ThemeConfig> externalThemes = ThemeConfigParser.parseThemes(themesJson);
+            if (externalThemes.isEmpty()) {
+                LOGGER.warning("Themes file has no parsed themes, keeping themes from comet_config.json");
+                return;
+            }
+
+            config.themes = externalThemes;
+            config.themeList = new ArrayList<>(externalThemes.values());
+            config.tierStatScaling = ThemeConfigParser.parseTierStatScaling(themesJson);
+            config.themesLoaded = true;
+            LOGGER.info("Loaded themes and monster groups from: " + themesFile.getAbsolutePath()
+                    + " (" + externalThemes.size() + " themes)");
+        } catch (Exception e) {
+            LOGGER.warning("Failed to load themes file, keeping themes from comet_config.json: " + e.getMessage());
+        }
+    }
+
+    private static void saveThemesConfig(CometConfig config, File themesFile) {
+        if (config == null || themesFile == null) {
+            return;
+        }
+
+        try {
+            File parentDir = themesFile.getParentFile();
+            if (parentDir != null && !parentDir.exists()) {
+                parentDir.mkdirs();
+            }
+
+            String json = ThemeConfigWriter.generateThemesAndMonsterGroupsConfig(config.themes, config.tierStatScaling);
+            try (FileWriter writer = new FileWriter(themesFile)) {
+                writer.write(json);
+                writer.flush();
+            }
+        } catch (Exception e) {
+            LOGGER.warning("Failed to save themes file '" + themesFile.getAbsolutePath() + "': " + e.getMessage());
+        }
     }
 
     /**
@@ -355,9 +577,6 @@ public class CometConfig {
             spawnTask.setSpawnChance(spawnChance);
             spawnTask.setMinSpawnDistance(minSpawnDistance);
             spawnTask.setMaxSpawnDistance(maxSpawnDistance);
-            LOGGER.info("Applied config to spawn task: min=" + minDelaySeconds +
-                    "s, max=" + maxDelaySeconds + "s, chance=" + (spawnChance * 100) +
-                    "%, distance=" + minSpawnDistance + "-" + maxSpawnDistance + " blocks");
         }
     }
 
@@ -405,34 +624,6 @@ public class CometConfig {
     }
 
     /**
-     * Get theme ID by index (for backwards compatibility)
-     * 
-     * @param index The theme index
-     * @return Theme ID or null
-     */
-    public String getThemeIdByIndex(int index) {
-        if (index >= 0 && index < themeList.size()) {
-            return themeList.get(index).getId();
-        }
-        return null;
-    }
-
-    /**
-     * Get theme index by ID
-     * 
-     * @param id The theme ID
-     * @return Index or -1 if not found
-     */
-    public int getThemeIndex(String id) {
-        for (int i = 0; i < themeList.size(); i++) {
-            if (themeList.get(i).getId().equals(id)) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    /**
      * Get all theme display names
      */
     public String[] getThemeNames() {
@@ -455,6 +646,18 @@ public class CometConfig {
      */
     public boolean hasThemes() {
         return themesLoaded && !themes.isEmpty();
+    }
+
+    public TierStatScalingConfig getTierStatScaling() {
+        return tierStatScaling != null ? tierStatScaling : new TierStatScalingConfig();
+    }
+
+    public float[] getTierStatMultipliers(int tier) {
+        return getTierStatScaling().getMultipliersForTier(tier);
+    }
+
+    public float[] getTierStatMultipliers(int tier, int zoneLevel) {
+        return getTierStatScaling().getMultipliersForTierAndZone(tier, zoneLevel);
     }
 
     // ========== Tier Settings Access Methods ==========
@@ -506,14 +709,56 @@ public class CometConfig {
         return rewardSettings;
     }
 
+    // ========== Zone Base Pools & Tier Inheritance ==========
+
+    /**
+     * Get zone base loot pool for a specific zone.
+     */
+    public TierRewards getZoneBaseLootPool(int zoneId) {
+        String key = String.valueOf(zoneId);
+        TierRewards pool = zoneBaseLootPools.get(key);
+        if (pool != null) {
+            return pool;
+        }
+        // Support 0-based config keys for worlds using Zone1..ZoneN naming.
+        if (zoneId > 0) {
+            pool = zoneBaseLootPools.get(String.valueOf(zoneId - 1));
+            if (pool != null) {
+                return pool;
+            }
+        }
+        return new TierRewards();
+    }
+
+    public Map<String, TierRewards> getAllZoneBaseLootPools() {
+        return zoneBaseLootPools;
+    }
+
+    /**
+     * Get per-tier lower-tier inclusion chances.
+     */
+    public TierInheritanceWeights getTierInheritanceWeights(int tier) {
+        TierInheritanceWeights weights = tierInheritanceWeights.get(tier);
+        if (weights == null) {
+            weights = getDefaultTierInheritanceWeights().get(tier);
+        }
+        if (weights == null) {
+            weights = new TierInheritanceWeights(1.0, 0.0, 0.0, 0.0, 0.0);
+        }
+        return weights;
+    }
+
+    public Map<Integer, TierInheritanceWeights> getAllTierInheritanceWeights() {
+        return tierInheritanceWeights;
+    }
+
     // ========== Zone Spawn Chances Access Methods ==========
 
     /**
      * Get zone spawn chances for a specific zone ID.
-     * Falls back to "default" if zone not found.
      *
      * @param zoneId The zone ID (0, 1, 2, 3, etc.)
-     * @return ZoneSpawnChances for that zone
+     * @return ZoneSpawnChances for that zone, or null if not configured
      */
     public ZoneSpawnChances getZoneSpawnChances(int zoneId) {
         String zoneKey = String.valueOf(zoneId);
@@ -521,13 +766,11 @@ public class CometConfig {
         if (chances != null) {
             return chances;
         }
-        // Fall back to "default" for unknown zones
-        chances = zoneSpawnChances.get("default");
-        if (chances != null) {
-            return chances;
+        // Support 0-based config keys for worlds using Zone1..ZoneN naming.
+        if (zoneId > 0) {
+            return zoneSpawnChances.get(String.valueOf(zoneId - 1));
         }
-        // Ultimate fallback - generate default for zone 4+
-        return ZoneSpawnChances.getDefaultForZone(4);
+        return null;
     }
 
     /**
@@ -544,9 +787,88 @@ public class CometConfig {
         zoneSpawnChances.put(zoneKey, chances);
     }
 
+    // ========== Protected Zone Rules (WorldProtect integration) ==========
+
+    public boolean isProtectedZoneSpawnRulesEnabled() {
+        return protectedZoneSpawnRulesEnabled;
+    }
+
+    public boolean getProtectedZoneDefaultInProtectedRegion() {
+        return protectedZoneDefaultInProtectedRegion;
+    }
+
+    public Map<String, Boolean> getProtectedZoneRegionOverrides() {
+        return Collections.unmodifiableMap(protectedZoneRegionOverrides);
+    }
+
+    public synchronized boolean isProtectedRegionSpawnAllowed(String regionId) {
+        if (!protectedZoneSpawnRulesEnabled) {
+            return true;
+        }
+        if (regionId == null || regionId.isBlank()) {
+            return true;
+        }
+
+        Boolean override = protectedZoneRegionOverrides.get(regionId.toLowerCase(Locale.ROOT));
+        return (override != null) ? override : protectedZoneDefaultInProtectedRegion;
+    }
+
+    /**
+     * Synchronize per-region overrides against currently existing WorldProtect regions.
+     * New regions are auto-added using defaultInProtectedRegion. Deleted regions are removed.
+     *
+     * @param activeRegionIds Region ids currently present in WorldProtect.
+     * @return true if config changed and was saved.
+     */
+    public synchronized boolean syncProtectedRegionOverrides(Iterable<String> activeRegionIds) {
+        if (activeRegionIds == null) {
+            return false;
+        }
+
+        Set<String> normalizedActive = new LinkedHashSet<>();
+        for (String regionId : activeRegionIds) {
+            if (regionId == null || regionId.isBlank()) {
+                continue;
+            }
+            String normalized = regionId.toLowerCase(Locale.ROOT);
+            if ("__global__".equals(normalized) || "global".equals(normalized)) {
+                continue;
+            }
+            normalizedActive.add(normalized);
+        }
+
+        boolean changed = false;
+
+        for (String regionId : normalizedActive) {
+            if (!protectedZoneRegionOverrides.containsKey(regionId)) {
+                protectedZoneRegionOverrides.put(regionId, protectedZoneDefaultInProtectedRegion);
+                changed = true;
+            }
+        }
+
+        Set<String> keysToRemove = new LinkedHashSet<>();
+        for (String existing : protectedZoneRegionOverrides.keySet()) {
+            if (!normalizedActive.contains(existing)) {
+                keysToRemove.add(existing);
+            }
+        }
+        if (!keysToRemove.isEmpty()) {
+            for (String removeKey : keysToRemove) {
+                protectedZoneRegionOverrides.remove(removeKey);
+            }
+            changed = true;
+        }
+
+        if (changed) {
+            save();
+        }
+
+        return changed;
+    }
+
     /**
      * Add or update a theme in the config
-     * Adds theme to all tiers (1-4) by default if no tiers specified
+     * Adds theme to all tiers (1-5) by default if no tiers specified
      */
     public void addOrUpdateTheme(ThemeConfig theme) {
         if (theme == null || theme.getId() == null) {
@@ -557,7 +879,7 @@ public class CometConfig {
         // If theme has no tiers specified, add all tiers by default
         if (theme.getTiers() == null || theme.getTiers().isEmpty()) {
             List<Integer> allTiers = new ArrayList<>();
-            for (int tier = 1; tier <= 4; tier++) {
+            for (int tier = 1; tier <= 5; tier++) {
                 allTiers.add(tier);
             }
             theme.setTiers(allTiers);

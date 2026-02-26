@@ -1,19 +1,25 @@
 # Comet_Raids_Redux
 
+Source code: `https://github.com/FPSTordah/Comet-Raids-Redux`
+Support Discord: `https://discord.gg/r5MBWdzWWW`
+
 Ever wanted random events to spice up your Hytale gameplay? This mod adds falling comets that crash into your world, bringing waves of enemies to fight. Break the comet stone to start the encounter - survive all waves and claim your rewards.
 
 `Comet_Raids_Redux` is the actively maintained continuation of the original Comet Raids project.
 
-This mod is built for players who want a raid-like experience and server owners who want a customizable reward system. You can create your own custom themes, define multi-wave encounters, override loot tables per theme, and tweak every aspect of the spawning and combat. Check the bottom of `comet_config.json` for examples of custom wave configurations.
+Current release: **v3.1.0**
+
+This mod is built for players who want a raid-like experience and server owners who want a customizable reward system. You can create custom themes, define multi-wave encounters, override loot tables per theme, and tweak every aspect of spawning and combat.
 
 ## Features
 
-- **4 Comet Tiers** - Uncommon, Rare, Epic, and Legendary. Higher tiers = tougher fights, better loot.
+- **5 Comet Tiers** - Uncommon, Rare, Epic, Legendary, and Mythic. Higher tiers = tougher fights, better loot.
 - **Themed Waves** - Skeletons, goblins, spiders, trorks, outlanders, undead hordes... each comet picks a random theme (or you can force one).
 - **Multi-Wave Combat** - Enemies spawn in waves. Clear one, the next begins. Rewards drop after the final wave.
-- **Timed Reward Chest** - Final rewards spawn in a per-comet chest instance. It expires after 20 seconds of inactivity; each touch/open resets the timer.
+- **Timed Reward Chest** - Final rewards spawn in a per-comet chest instance. 
 - **Map Markers** - Comets show up on your map so you can track them down.
-- **Fully Configurable** - Spawn rates, enemy counts, loot tables, despawn timers... tweak it all.
+- **Zone + Tier Loot Model** - Rewards combine zone identity pools, current tier pools, and lower-tier inheritance weights.
+- **Fully Configurable** - Spawn rates, enemy counts, loot tables, zone distributions, and scaling multipliers are all configurable.
 
 ## Reward Chest Behavior
 
@@ -21,29 +27,34 @@ When a comet encounter is cleared, the reward chest system works like this:
 
 - A reward chest drops at the comet completion location.
 - Each comet creates its own chest instance with loot generated for that comet's tier/theme.
-- The chest is interactable and tracked by the mod's timed chest manager.
-
 
 ## Quick Start
 
 ### Requirements
 
-- Java 21
-- Maven 3.9+
+- Endgame & QoL mod (`Config:Endgame&QoL`) for Tier 5/Mythic content (optional)
 
-### Build
+Tier 5/Mythic is the Endgame integration tier (Prisma/Onyxium and related Endgame materials), so it requires Endgame & QoL to be active.
+If Endgame & QoL is missing, the mod still loads and Tier 5/Mythic is automatically disabled.
 
-```bash
-mvn clean package
-```
+### Permissions (LuckPerms)
 
-Build output:
+- `/comet spawn` -> `hytale.command.comet.spawn`
+- `/comet test` -> `hytale.command.comet.test`
+- `/comet zone` -> `hytale.command.comet.zone`
+- `/comet destroyall` -> `hytale.command.comet.destroyall`
+- `/comet reload` -> `hytale.command.comet.reload`
+- `/comet setspawn` -> `hytale.command.comet.setspawn`
+- `/comet schedulespawn` -> `hytale.command.comet.schedulespawn`
+- `/comet removespawn` -> `hytale.command.comet.removespawn`
+- `/comet listspawns` -> `hytale.command.comet.listspawns`
 
-- `target/Comet_Raids_Redux-2.0.1.jar`
+Recommended admin setup in LuckPerms:
+- Grant all comet command nodes above to your admin group, or grant wildcard `hytale.command.comet.*` if your permissions setup supports wildcards.
 
 ### Deploy
 
-Place `target/Comet_Raids_Redux-2.0.1.jar` in your server mods/plugins location, replacing the old jar, then restart the server.
+Place `Comet_Raids_Redux-3.1.0.jar` in your server mods/plugins location, replacing the old jar, then restart the server.
 
 ### IDE
 
@@ -65,11 +76,7 @@ Comets spawn naturally based on these default settings:
 - **Spawn distance**: 30-50 blocks away from a player
 - **Despawn**: Unclaimed uncommon comets despawn after 30 minutes
 
-The tier of comet that spawns depends on the zone you're in:
-- **Zone 1**: 80% Uncommon, 20% Rare
-- **Zone 2**: 40% Uncommon, 40% Rare, 20% Epic
-- **Zone 3**: 30% Rare, 50% Epic, 20% Legendary
-- **Zone 4**: 40% Epic, 60% Legendary
+The tier of comet that spawns depends on `zoneSpawnChances` (`0..3` keys in config), including Mythic probabilities.
 
 ## Commands
 
@@ -78,7 +85,7 @@ The tier of comet that spawns depends on the zone you're in:
 | Command | Description |
 |---------|-------------|
 | `/comet spawn` | Spawns an Uncommon comet near you |
-| `/comet spawn --tier Rare` | Spawns a specific tier (Uncommon, Rare, Epic, Legendary) |
+| `/comet spawn --tier Rare` | Spawns a specific tier (Uncommon, Rare, Epic, Legendary, Mythic) |
 | `/comet spawn --theme Skeleton` | Spawns with a specific theme |
 | `/comet spawn --tier Legendary --theme Void` | Combine tier and theme |
 | `/comet spawn --onme true` | Spawns comet directly above you (for testing) |
@@ -139,7 +146,7 @@ These are still valid as JSON examples, but command-based editing is currently d
 
 ### Available Themes
 
-> Tier 1 = Uncommon, Tier 2 = Rare, Tier 3 = Epic, Tier 4 = Legendary
+> Tier 1 = Uncommon, Tier 2 = Rare, Tier 3 = Epic, Tier 4 = Legendary, Tier 5 = Mythic
 
 - `Skeleton` - Skeleton Horde (Tier 1-2)
 - `Goblin` - Goblin Gang (Tier 1-2)
@@ -148,19 +155,31 @@ These are still valid as JSON examples, but command-based editing is currently d
 - `Skeleton_Sand` - Sand Skeleton Legion (Tier 1-3)
 - `Sabertooth` - Sabertooth Pack (Tier 1-3)
 - `Void` - Voidspawn (Tier 1-3)
-- `Outlander` - Outlander Cult (Tier 2-4)
-- `Leopard` - Snow Leopard Pride (Tier 2-4)
-- `Skeleton_Burnt` - Burnt Legion (Tier 3-4)
-- `Ice` - Legendary Ice (Tier 3-4)
-- `Burnt_Legendary` - Legendary Burnt (Tier 3-4)
-- `Lava` - Legendary Lava (Tier 3-4)
-- `Earth` - Legendary Earth (Tier 3-4)
-- `Undead` - Undead Horde (Tier 1-4)
-- `Zombie` - Zombie Aberration (Tier 3-4)
+- `Outlander` - Outlander Cult (Tier 2-5)
+- `Leopard` - Snow Leopard Pride (Tier 2-5)
+- `Skeleton_Burnt` - Burnt Legion (Tier 3-5)
+- `Ice` - Legendary Ice (Tier 3-5)
+- `Lava` - Legendary Lava (Tier 3-5)
+- `Earth` - Legendary Earth (Tier 3-5)
+- `Undead` / `Undead_Legendary` - Undead variants (Tier 1-5 depending on theme)
+- `Zombie` - Zombie Aberration (Tier 3-5)
+- `Frostbound_Pack` - Frostbound Pack (Tier 2-5)
+- `Ashen_Vanguard` - Ashen Vanguard (Tier 3-5)
+- `Dune_Stalkers` - Dune Stalkers (Tier 2-4)
+- `Void_Reavers` - Void Reavers (Tier 2-4)
+- `Plague_Horde` - Plague Horde (Tier 2-5)
+- `Trork_Siege` - Trork Siege (Tier 2-4)
+- `Ember_Hunters` - Ember Hunters (Tier 3-5)
+- `Crystal_Marauders` - Crystal Marauders (Tier 3-5)
+- `Wraithborn_Legion` - Wraithborn Legion (Tier 3-5)
+- `Predator_Clan` - Predator Clan (Tier 1-4)
 
 ## Configuration
 
-All settings live in `comet_config.json`. Open it with any text editor.
+Settings are split across two files:
+
+- `comet_config.json` - spawn behavior, zone chances, tier settings, reward tables, inheritance, WorldProtect rules
+- `comet_themes_and_monster_groups.json` - themes/waves and global stat scaling multipliers
 
 ## Packaging As One JAR
 
@@ -174,7 +193,7 @@ mvn clean package
 
 This creates:
 
-- `target/Comet_Raids_Redux-2.0.1.jar`
+- `target/Comet_Raids_Redux-3.1.0.jar`
 
 The output JAR includes:
 
@@ -183,6 +202,8 @@ The output JAR includes:
 - `manifest.json`
 - `comet_config.json`
 - `fixed_spawns.json`
+
+`comet_themes_and_monster_groups.json` is generated/updated at runtime as the theme/multiplier config source.
 
 In IntelliJ, open/import the project as a Maven project and use Build/Rebuild.
 
@@ -233,7 +254,7 @@ Schema supports two modes:
 - `enabled` - true/false to enable or disable this spawn point
 - `cooldownSeconds` - Seconds between spawns (used if scheduledTimes is empty)
 - `scheduledTimes` - Array of real-world times like `["18:00", "06:00"]` - spawns at these times daily
-- `tier` - Uncommon, Rare, Epic, or Legendary (optional, random if not set)
+- `tier` - Uncommon, Rare, Epic, Legendary, or Mythic (optional, random if not set)
 - `theme` - Theme name like "Skeleton Horde" (optional, random if not set)
 - `despawnMinutes` - Custom despawn time for this spawn point (optional, uses global if not set)
 - `notifyRadius` - Notification radius: omit = 100 blocks (default), `"none"` = no notification, `"global"` = all players, number = custom radius in blocks
@@ -261,8 +282,8 @@ Schema supports two modes:
 **zoneSpawnChances** - Tier distribution per zone
 ```json
 "zoneSpawnChances": {
-  "0": { "tier1": 1.0, "tier2": 0.0, "tier3": 0.0, "tier4": 0.0 },
-  "1": { "tier1": 0.8, "tier2": 0.2, "tier3": 0.0, "tier4": 0.0 }
+  "0": { "tier1": 0.8, "tier2": 0.1, "tier3": 0.07, "tier4": 0.03, "tier5": 0.0 },
+  "1": { "tier1": 0.6, "tier2": 0.2, "tier3": 0.13, "tier4": 0.07, "tier5": 0.0 }
 }
 ```
 
@@ -294,7 +315,23 @@ Schema supports two modes:
 }
 ```
 
-**themes** - Enemy wave configurations (see existing themes for examples)
+**zoneBaseLootPools** - Base material identity per zone
+
+**tierInheritanceWeights** - Lower-tier inclusion chances per active tier
+
+Theme and multiplier config now live in `comet_themes_and_monster_groups.json`:
+
+```json
+"tierStatScaling": {
+  "enabled": true,
+  "percentPerTier": 5.0,
+  "zonePercentPerLevel": 2.0,
+  "applyHp": true,
+  "applyDamage": true,
+  "applySpeed": true,
+  "applyScale": false
+}
+```
 
 ### Startup Validation
 
@@ -342,13 +379,14 @@ Use `"naturalSpawn": false` on themes you're testing to prevent them from spawni
 
 ### Creating Custom Themes
 
-Want to make your own encounters? Check the `skeleton_siege` theme at the bottom of `comet_config.json` for a full example. You can:
+Want to make your own encounters? Edit `comet_themes_and_monster_groups.json`. You can:
 
 - Define multiple waves with different enemy compositions
-- Set per-tier stats for each mob (HP, damage, scale, speed)
 - Configure boss waves separately from normal waves
 - Override the default loot table with custom rewards per tier
 - Use `"naturalSpawn": false` to prevent a theme from spawning naturally while you test it
+
+Mob/boss stat scaling is global now via `tierStatScaling` (tier and zone based), rather than per-mob inline stat blocks.
 
 The config is fully JSON - just copy an existing theme, rename it, and start tweaking.
 

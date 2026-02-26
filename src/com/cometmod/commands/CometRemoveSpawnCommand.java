@@ -18,12 +18,13 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import javax.annotation.Nonnull;
 
 /**
- * Placeholder command kept for source compatibility.
+ * Placeholder command for fixed spawn removal.
  */
 public class CometRemoveSpawnCommand extends AbstractWorldCommand {
 
     public CometRemoveSpawnCommand() {
         super("removespawn", "Removes a fixed spawn point (placeholder in this source snapshot)");
+        requirePermission(CometPermissions.REMOVE_SPAWN);
     }
 
     @Override

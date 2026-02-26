@@ -35,9 +35,9 @@ import java.util.logging.Logger;
  *
  * Behavior:
  * - Chest is spawned with generated rewards.
- * - Timer starts when the chest is touched/opened.
- * - If untouched for 20 seconds, chest is removed.
- * - Any touch before expiry resets the timer.
+ * - Timer is cancelled whenever the chest is opened.
+ * - Timer starts when the last viewer closes the chest window.
+ * - If not reopened within 20 seconds after close, chest is removed.
  */
 public final class CometLootChestService {
 
@@ -129,18 +129,6 @@ public final class CometLootChestService {
         }
     }
 
-    public void touchChest(World world, Vector3i blockPos) {
-        if (world == null || blockPos == null) {
-            return;
-        }
-        Vector3i pos = copyKey(blockPos);
-        String key = keyOf(pos);
-        if (!managedChests.contains(key)) {
-            return;
-        }
-        scheduleExpiry(world, key, pos);
-    }
-
     public boolean openManagedChest(World world,
             CommandBuffer<EntityStore> commandBuffer,
             InteractionContext context,
@@ -191,7 +179,7 @@ public final class CometLootChestService {
         }
 
         if (windows.containsKey(playerUuid)) {
-            touchChest(world, pos);
+            pauseChestExpiry(pos);
             return true;
         }
 
@@ -214,7 +202,7 @@ public final class CometLootChestService {
                 containerState.getItemContainer());
 
         if (windows.putIfAbsent(playerUuid, window) != null) {
-            touchChest(world, pos);
+            pauseChestExpiry(pos);
             return true;
         }
 
@@ -231,13 +219,16 @@ public final class CometLootChestService {
         window.registerCloseEvent(event -> {
             windows.remove(playerUuid, window);
             BlockType currentType = world.getBlockType(pos);
-            if (currentType != null && windows.isEmpty()) {
-                world.setBlockInteractionState(pos, currentType, "CloseWindow");
+            if (windows.isEmpty()) {
+                if (currentType != null) {
+                    world.setBlockInteractionState(pos, currentType, "CloseWindow");
+                }
+                startChestExpiry(world, pos);
             }
         });
 
         containerState.onOpen(playerRef, world, store);
-        touchChest(world, pos);
+        pauseChestExpiry(pos);
         return true;
     }
 
@@ -265,6 +256,29 @@ public final class CometLootChestService {
         }
         expiryTasks.clear();
         managedChests.clear();
+    }
+
+    private void pauseChestExpiry(Vector3i blockPos) {
+        if (blockPos == null) {
+            return;
+        }
+        String key = keyOf(blockPos);
+        if (!managedChests.contains(key)) {
+            return;
+        }
+        cancelExpiryTask(key);
+    }
+
+    private void startChestExpiry(World world, Vector3i blockPos) {
+        if (world == null || blockPos == null) {
+            return;
+        }
+        Vector3i pos = copyKey(blockPos);
+        String key = keyOf(pos);
+        if (!managedChests.contains(key)) {
+            return;
+        }
+        scheduleExpiry(world, key, pos);
     }
 
     private void scheduleExpiry(World world, String key, Vector3i pos) {
@@ -319,7 +333,7 @@ public final class CometLootChestService {
 
         managedChests.remove(key);
         expiryTasks.remove(key);
-        LOGGER.info("Expired untouched reward chest at " + pos + ".");
+        LOGGER.info("Expired reward chest after close timer at " + pos + ".");
     }
 
     private boolean forceRemoveBlock(World world, Vector3i pos) {

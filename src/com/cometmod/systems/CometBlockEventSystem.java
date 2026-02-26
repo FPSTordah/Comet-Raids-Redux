@@ -29,7 +29,6 @@ public class CometBlockEventSystem extends EntityEventSystem<EntityStore, UseBlo
     public CometBlockEventSystem(CometWaveManager waveManager) {
         super(UseBlockEvent.Pre.class);
         this.waveManager = waveManager;
-        LOGGER.info("[CometBlockEventSystem] Constructor called! System created.");
     }
     
     @Override
@@ -44,33 +43,18 @@ public class CometBlockEventSystem extends EntityEventSystem<EntityStore, UseBlo
                       @Nonnull Store<EntityStore> store, 
                       @Nonnull CommandBuffer<EntityStore> commandBuffer, 
                       @Nonnull UseBlockEvent.Pre event) {
-        
-        // Log ALL UseBlockEvent.Pre events to see if handler is being called
         String blockTypeId = event.getBlockType().getId();
-        LOGGER.info(
-            "[CometBlockEventSystem] UseBlockEvent.Pre fired! BlockType=" + blockTypeId + 
-            ", InteractionType=" + event.getInteractionType() + 
-            ", Position=" + event.getTargetBlock()
-        );
-        
+
         // Check if the block is a Comet_Stone variant (any tier)
         if (!blockTypeId.startsWith("Comet_Stone_")) {
-            LOGGER.info("[CometBlockEventSystem] Not Comet_Stone variant, ignoring. BlockType=" + blockTypeId);
             return;
         }
-        
-        LOGGER.info("[CometBlockEventSystem] Comet_Stone variant detected! BlockType=" + blockTypeId + ", InteractionType=" + event.getInteractionType());
-        
+
         // Only handle Use (f key) interactions - same as chests
         if (event.getInteractionType() != com.hypixel.hytale.protocol.InteractionType.Use) {
-            LOGGER.info(
-                "[CometBlockEventSystem] Comet_Stone variant detected but InteractionType is " + event.getInteractionType() + " (not Use), ignoring"
-            );
             return;
         }
-        
-        LOGGER.info("[CometBlockEventSystem] Comet_Stone variant Use interaction detected! BlockType=" + blockTypeId + ", Activating...");
-        
+
         // Get the exact block position
         com.hypixel.hytale.math.vector.Vector3i blockPos = event.getTargetBlock();
         
@@ -82,7 +66,6 @@ public class CometBlockEventSystem extends EntityEventSystem<EntityStore, UseBlo
                 world.getState(blockPos.x, blockPos.y, blockPos.z, true);
             
             if (blockState == null) {
-                LOGGER.info("[CometBlockEventSystem] Block at " + blockPos + " already broken (wave completed)");
                 return; // Block doesn't exist, don't activate
             }
         } catch (Exception e) {
@@ -95,13 +78,10 @@ public class CometBlockEventSystem extends EntityEventSystem<EntityStore, UseBlo
             LOGGER.warning("[CometBlockEventSystem] PlayerRef is null or invalid!");
             return;
         }
-        
-        LOGGER.info("[CometBlockEventSystem] Calling waveManager.handleCometActivation...");
-        
+
         // Handle comet activation
         try {
             waveManager.handleCometActivation(store, playerRef, blockPos);
-            LOGGER.info("[CometBlockEventSystem] waveManager.handleCometActivation completed successfully");
         } catch (Exception e) {
             LOGGER.severe("[CometBlockEventSystem] Error in handleCometActivation: " + e.getMessage());
             e.printStackTrace();
@@ -109,6 +89,5 @@ public class CometBlockEventSystem extends EntityEventSystem<EntityStore, UseBlo
         
         // Cancel the event to prevent default interaction (opening a container UI if it were a chest)
         event.setCancelled(true);
-        LOGGER.info("[CometBlockEventSystem] Event cancelled to prevent default interaction");
     }
 }

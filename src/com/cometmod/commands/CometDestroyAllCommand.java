@@ -34,6 +34,7 @@ public class CometDestroyAllCommand extends AbstractWorldCommand {
     
     public CometDestroyAllCommand() {
         super("destroyall", "Destroy all comet blocks in the world");
+        requirePermission(CometPermissions.DESTROY_ALL);
     }
     
     @Override

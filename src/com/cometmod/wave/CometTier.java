@@ -12,7 +12,8 @@ public enum CometTier {
     UNCOMMON("Uncommon"),
     EPIC("Epic"),
     RARE("Rare"),
-    LEGENDARY("Legendary");
+    LEGENDARY("Legendary"),
+    MYTHIC("Mythic");
     
     private final String name;
     

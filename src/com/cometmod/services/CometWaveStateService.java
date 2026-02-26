@@ -24,6 +24,7 @@ public class CometWaveStateService {
     private final Map<Vector3i, CometWaveManager.CometState> activeComets = new ConcurrentHashMap<>();
     private final Map<Vector3i, CometTier> cometTiers = new ConcurrentHashMap<>();
     private final Map<Vector3i, UUID> cometOwners = new ConcurrentHashMap<>();
+    private final Map<Vector3i, Integer> cometZones = new ConcurrentHashMap<>();
     private final Map<Vector3i, String> cometThemes = new ConcurrentHashMap<>();
     private final Map<Vector3i, String> forcedThemes = new ConcurrentHashMap<>();
 
@@ -76,6 +77,14 @@ public class CometWaveStateService {
         return cometTiers.getOrDefault(blockPos, fallback);
     }
 
+    public void registerCometZone(Vector3i blockPos, int zoneId) {
+        cometZones.put(blockPos, zoneId);
+    }
+
+    public Integer getZone(Vector3i blockPos) {
+        return cometZones.get(blockPos);
+    }
+
     public void setTheme(Vector3i blockPos, String themeId) {
         cometThemes.put(blockPos, themeId);
     }
@@ -107,6 +116,7 @@ public class CometWaveStateService {
         cometOwners.remove(blockPos);
         cometThemes.remove(blockPos);
         forcedThemes.remove(blockPos);
+        cometZones.remove(blockPos);
     }
 
     public Map<Vector3i, CometWaveManager.CometState> activeComets() {
@@ -119,6 +129,10 @@ public class CometWaveStateService {
 
     public Map<Vector3i, UUID> cometOwners() {
         return cometOwners;
+    }
+
+    public Map<Vector3i, Integer> cometZones() {
+        return cometZones;
     }
 
     public Map<Vector3i, String> cometThemes() {

@@ -6,7 +6,7 @@
 
     <groupId>com.cometmod</groupId>
     <artifactId>comet-raids-redux</artifactId>
-    <version>2.0.1</version>
+    <version>3.1.0</version>
     <packaging>jar</packaging>
     <name>Comet_Raids_Redux</name>
 
@@ -32,7 +32,8 @@
             <groupId>com.hypixel.hytale</groupId>
             <artifactId>Server</artifactId>
             <version>${hytale.server.version}</version>
-            <scope>provided</scope>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/libs/HytaleServer.jar</systemPath>
         </dependency>
         <dependency>
             <groupId>com.google.code.findbugs</groupId>

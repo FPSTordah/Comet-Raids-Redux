@@ -25,6 +25,7 @@ public class CometListSpawnsCommand extends AbstractWorldCommand {
 
     public CometListSpawnsCommand() {
         super("listspawns", "Lists configured fixed spawn points");
+        requirePermission(CometPermissions.LIST_SPAWNS);
     }
 
     @Override

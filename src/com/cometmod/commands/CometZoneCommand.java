@@ -16,8 +16,12 @@ import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.WorldMapTracker;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.component.Store;
+import com.cometmod.config.model.ZoneSpawnChances;
 
 import javax.annotation.Nonnull;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.logging.Logger;
 
 /**
@@ -29,6 +33,7 @@ public class CometZoneCommand extends AbstractWorldCommand {
     
     public CometZoneCommand() {
         super("zone", "Check which zone you are currently in");
+        requirePermission(CometPermissions.ZONE);
     }
     
     @Override
@@ -137,16 +142,52 @@ public class CometZoneCommand extends AbstractWorldCommand {
      * Get tier distribution info for a zone
      */
     private String getTierInfoForZone(int zoneId) {
-        if (zoneId == 0) {
-            return "80% Uncommon, 20% Epic";
-        } else if (zoneId == 1) {
-            return "80% Uncommon, 20% Epic";
-        } else if (zoneId == 2) {
-            return "40% Uncommon, 45% Epic, 15% Rare";
-        } else if (zoneId == 3) {
-            return "40% Epic, 50% Rare, 10% Legendary";
-        } else {
-            return "60% Rare, 40% Legendary";
+        CometConfig config = CometConfig.getInstance();
+        if (config == null) {
+            return "Config unavailable";
         }
+
+        ZoneSpawnChances chances = config.getZoneSpawnChances(zoneId);
+        if (chances == null) {
+            return "No spawn chances configured for this zone";
+        }
+
+        List<String> parts = new ArrayList<>();
+        if (CometConfig.isTier5Enabled()) {
+            appendTierPart(parts, "Uncommon", chances.getTier1());
+            appendTierPart(parts, "Rare", chances.getTier2());
+            appendTierPart(parts, "Epic", chances.getTier3());
+            appendTierPart(parts, "Legendary", chances.getTier4());
+            appendTierPart(parts, "Mythic", chances.getTier5());
+            return parts.isEmpty() ? "No active tiers in this zone" : String.join(", ", parts);
+        }
+
+        double t1 = chances.getTier1();
+        double t2 = chances.getTier2();
+        double t3 = chances.getTier3();
+        double t4 = chances.getTier4();
+        double totalWithoutMythic = t1 + t2 + t3 + t4;
+
+        if (totalWithoutMythic <= 0.0) {
+            return "No active tiers in this zone (Tier 5 disabled)";
+        }
+
+        appendTierPart(parts, "Uncommon", t1 / totalWithoutMythic);
+        appendTierPart(parts, "Rare", t2 / totalWithoutMythic);
+        appendTierPart(parts, "Epic", t3 / totalWithoutMythic);
+        appendTierPart(parts, "Legendary", t4 / totalWithoutMythic);
+
+        String info = parts.isEmpty() ? "No active tiers in this zone" : String.join(", ", parts);
+        if (chances.getTier5() > 0.0) {
+            info += " (Mythic disabled: Endgame&QoL missing)";
+        }
+        return info;
+    }
+
+    private void appendTierPart(List<String> parts, String name, double chance) {
+        if (chance <= 0.0) {
+            return;
+        }
+        parts.add(String.format(Locale.ROOT, "%.0f%% %s", chance * 100.0, name));
     }
 }

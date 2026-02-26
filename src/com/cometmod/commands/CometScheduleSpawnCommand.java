@@ -18,12 +18,13 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import javax.annotation.Nonnull;
 
 /**
- * Placeholder command kept for source compatibility.
+ * Placeholder command for fixed spawn scheduling.
  */
 public class CometScheduleSpawnCommand extends AbstractWorldCommand {
 
     public CometScheduleSpawnCommand() {
         super("schedulespawn", "Schedules a fixed spawn point (placeholder in this source snapshot)");
+        requirePermission(CometPermissions.SCHEDULE_SPAWN);
     }
 
     @Override

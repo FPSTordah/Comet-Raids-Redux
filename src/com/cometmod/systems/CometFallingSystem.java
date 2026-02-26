@@ -19,6 +19,7 @@ import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.chunk.WorldChunk;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.core.entity.UUIDComponent;
+import com.cometmod.integration.WorldProtectRegionGuard;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -61,6 +62,10 @@ public class CometFallingSystem {
     // Key: projectile UUID, Value: owner player UUID
     private final Map<UUID, UUID> projectileOwners = new HashMap<>();
 
+    // Map to track zone ID for each projectile (for zone-based rewards)
+    // Key: projectile UUID, Value: zone ID
+    private final Map<UUID, Integer> projectileZones = new HashMap<>();
+
     // Map to track spawn time for each projectile (for timeout detection)
     // Key: projectile UUID, Value: spawn timestamp in milliseconds
     private final Map<UUID, Long> projectileSpawnTime = new HashMap<>();
@@ -79,10 +84,11 @@ public class CometFallingSystem {
     }
 
     public void trackProjectile(UUID projectileUUID, Vector3i targetBlockPos, double spawnY, CometTier tier,
-            String themeId, UUID ownerUUID) {
+            String themeId, UUID ownerUUID, int zoneId) {
         trackedProjectiles.put(projectileUUID, targetBlockPos);
         projectileSpawnY.put(projectileUUID, spawnY);
         projectileTiers.put(projectileUUID, tier);
+        projectileZones.put(projectileUUID, zoneId);
         projectileSpawnTime.put(projectileUUID, System.currentTimeMillis());
         if (themeId != null) {
             projectileThemes.put(projectileUUID, themeId);
@@ -103,6 +109,7 @@ public class CometFallingSystem {
         projectileTiers.remove(projectileUUID);
         projectileThemes.remove(projectileUUID);
         projectileOwners.remove(projectileUUID);
+        projectileZones.remove(projectileUUID);
         projectileSpawnTime.remove(projectileUUID);
         return targetPos;
     }
@@ -117,6 +124,10 @@ public class CometFallingSystem {
 
     public UUID getProjectileOwner(UUID projectileUUID) {
         return projectileOwners.get(projectileUUID);
+    }
+
+    public int getProjectileZone(UUID projectileUUID) {
+        return projectileZones.getOrDefault(projectileUUID, 0);
     }
 
     public void checkProjectilesFallback(World world, Store<EntityStore> store) {
@@ -215,7 +226,8 @@ public class CometFallingSystem {
                                     CometTier tier = getProjectileTier(entityUUID);
                                     String themeId = getProjectileThemeId(entityUUID);
                                     UUID ownerUUID = getProjectileOwner(entityUUID);
-                                    spawnCometBlock(world, actualBlockPos, store, tier, themeId, ownerUUID);
+                                    int zoneId = getProjectileZone(entityUUID);
+                                    spawnCometBlock(world, actualBlockPos, store, tier, themeId, ownerUUID, zoneId);
                                     removeTrackedProjectile(entityUUID);
 
                                     // Remove the projectile entity
@@ -276,7 +288,8 @@ public class CometFallingSystem {
                 CometTier tier = getProjectileTier(projectileUUID);
                 String themeId = getProjectileThemeId(projectileUUID);
                 UUID ownerUUID = getProjectileOwner(projectileUUID);
-                spawnCometBlock(world, targetPos, store, tier, themeId, ownerUUID);
+                int zoneId = getProjectileZone(projectileUUID);
+                spawnCometBlock(world, targetPos, store, tier, themeId, ownerUUID, zoneId);
             }
             removeTrackedProjectile(projectileUUID);
         }
@@ -321,8 +334,18 @@ public class CometFallingSystem {
     }
 
     public void spawnFallingComet(Ref<EntityStore> playerRef, Vector3i targetBlockPos, CometTier tier, String themeId,
-            Store<EntityStore> store, World targetWorld, UUID ownerUUID) {
+            Store<EntityStore> store, World targetWorld, UUID ownerUUID, int zoneId) {
         try {
+            CometConfig config = CometConfig.getInstance();
+            if (!WorldProtectRegionGuard.canSpawnAt(targetWorld, targetBlockPos.x, targetBlockPos.y, targetBlockPos.z,
+                    config)) {
+                String regionId = WorldProtectRegionGuard.getPrimaryRegionIdAt(targetWorld, targetBlockPos.x,
+                        targetBlockPos.y, targetBlockPos.z);
+                LOGGER.info("Comet spawn blocked by protected-zone rules at " + targetBlockPos +
+                        (regionId != null ? " (region: " + regionId + ")" : ""));
+                return;
+            }
+
             // Get projectile config (tier-specific)
             String projectileConfigName = tier.getFallingProjectileConfig();
             com.hypixel.hytale.server.core.modules.projectile.config.ProjectileConfig projectileConfig = (com.hypixel.hytale.server.core.modules.projectile.config.ProjectileConfig) com.hypixel.hytale.server.core.modules.projectile.config.ProjectileConfig
@@ -364,10 +387,10 @@ public class CometFallingSystem {
                     .spawnProjectile(projectileUUID, playerRef, commandBuffer, projectileConfig, spawnPos, direction);
 
             if (projectileRef != null) {
-                trackProjectile(projectileUUID, targetBlockPos, spawnPos.y, tier, themeId, ownerUUID);
+                trackProjectile(projectileUUID, targetBlockPos, spawnPos.y, tier, themeId, ownerUUID, zoneId);
             } else {
                 LOGGER.warning("Failed to spawn projectile, falling back to direct block spawn");
-                spawnCometBlock(targetWorld, targetBlockPos, store, tier, themeId, ownerUUID);
+                spawnCometBlock(targetWorld, targetBlockPos, store, tier, themeId, ownerUUID, zoneId);
             }
 
             // Consume command buffer
@@ -383,12 +406,12 @@ public class CometFallingSystem {
             LOGGER.warning("Error spawning falling comet: " + e.getMessage());
             e.printStackTrace();
             // Fallback: spawn block directly
-            spawnCometBlock(targetWorld, targetBlockPos, store, tier, themeId, ownerUUID);
+            spawnCometBlock(targetWorld, targetBlockPos, store, tier, themeId, ownerUUID, zoneId);
         }
     }
 
     public void spawnCometBlock(World world, Vector3i blockPos, Store<EntityStore> store, CometTier tier,
-            String themeId, UUID ownerUUID) {
+            String themeId, UUID ownerUUID, int zoneId) {
         try {
             // Get chunk
             long chunkIndex = com.hypixel.hytale.math.util.ChunkUtil.indexChunkFromBlock(
@@ -432,29 +455,11 @@ public class CometFallingSystem {
             // Place the block
             chunk.setBlock(localX, blockPos.y, localZ, blockId, blockType, 0, 0, 0);
             chunk.markNeedsSaving();
-            LOGGER.warning("[DEBUG-COMET-SPAWN] Placed comet block id=" + blockIdName + " tier=" + tier.getName() + " at " +
-                    blockPos + " (world=" + world.getName() + ")");
-
-            // Beam debug: reflects current asset config in Server/Particles/Comet_Beam*.
-            String beamSystem = tier.getBeamParticleSystem();
-            double blockParticleOffsetY = 0.5;
-            double systemSpawnerOffsetY = -1.0;
-            double beamScaleY = 999.0;
-            double beamCenterY = blockPos.y + blockParticleOffsetY + systemSpawnerOffsetY;
-            double beamStartY = beamCenterY - (beamScaleY / 2.0);
-            double beamEndY = beamCenterY + (beamScaleY / 2.0);
-            String beamSystemPath = "Server/Particles/" + beamSystem + "/" + beamSystem + ".particlesystem";
-            LOGGER.warning("[DEBUG-BEAM-SPAWN] tier=" + tier.getName() +
-                    " systemId=" + beamSystem +
-                    " cometPos=" + blockPos +
-                    " beamStartY=" + beamStartY +
-                    " beamCenterY=" + beamCenterY +
-                    " beamEndY=" + beamEndY +
-                    " systemPath=" + beamSystemPath);
 
             // Register tier with wave manager (with owner for marker visibility)
             CometWaveManager waveManager = CometModPlugin.getWaveManager();
             if (waveManager != null) {
+                waveManager.registerCometZone(blockPos, zoneId);
                 waveManager.registerCometTier(world, blockPos, tier, ownerUUID);
 
                 // If we have a forced theme, register it now at the ACTUAL spawn position

@@ -1,15 +1,16 @@
 package com.cometmod.config.validation;
 
 import static com.cometmod.config.parser.ConfigJson.extractArrayObjects;
+import static com.cometmod.config.parser.ConfigJson.extractArrayFromPosition;
 import static com.cometmod.config.parser.ConfigJson.extractBooleanValue;
 import static com.cometmod.config.parser.ConfigJson.extractDoubleValue;
 import static com.cometmod.config.parser.ConfigJson.extractIntValue;
 import static com.cometmod.config.parser.ConfigJson.extractJsonArray;
 import static com.cometmod.config.parser.ConfigJson.extractJsonObject;
+import static com.cometmod.config.parser.ConfigJson.extractObjectFromPosition;
 import static com.cometmod.config.parser.ConfigJson.extractStringArray;
 
 import java.util.List;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -17,7 +18,6 @@ import java.util.regex.Pattern;
  */
 public final class ConfigValidator {
 
-    private static final Pattern THEME_ENTRY_PATTERN = Pattern.compile("\"([a-zA-Z0-9_]+)\"\\s*:");
     private static final Pattern SCHEDULE_TIME_PATTERN = Pattern.compile("^([01]\\d|2[0-3]):[0-5]\\d$");
 
     private ConfigValidator() {
@@ -100,7 +100,6 @@ public final class ConfigValidator {
 
     private static void validateTopLevelBlocks(String json, ConfigValidationReport report) {
         requireObject(json, "spawnSettings", report);
-        requireObject(json, "themes", report);
         requireObject(json, "tierSettings", report);
         requireObject(json, "rewardSettings", report);
         requireObject(json, "zoneSpawnChances", report);
@@ -147,23 +146,45 @@ public final class ConfigValidator {
 
     private static void validateThemesSchema(String json, ConfigValidationReport report) {
         String themes = extractJsonObject(json, "themes");
-        if (themes == null) {
+        if (themes == null || themes.length() < 2) {
             return;
         }
 
-        Matcher matcher = THEME_ENTRY_PATTERN.matcher(themes);
-        while (matcher.find()) {
-            String key = matcher.group(1);
-            int colon = themes.indexOf(':', matcher.end() - 1);
-            if (colon < 0) {
+        int i = 1; // skip opening '{'
+        int end = themes.length() - 1; // ignore closing '}'
+
+        while (i < end) {
+            i = skipWhitespaceAndCommas(themes, i, end);
+            if (i >= end) {
+                break;
+            }
+
+            if (themes.charAt(i) != '"') {
+                i++;
                 continue;
             }
-            int i = colon + 1;
-            while (i < themes.length() && Character.isWhitespace(themes.charAt(i))) {
+
+            int keyEnd = findStringEnd(themes, i + 1);
+            if (keyEnd < 0) {
+                break;
+            }
+
+            String key = themes.substring(i + 1, keyEnd);
+            i = keyEnd + 1;
+
+            while (i < end && Character.isWhitespace(themes.charAt(i))) {
                 i++;
             }
-            if (i >= themes.length()) {
+            if (i >= end || themes.charAt(i) != ':') {
                 continue;
+            }
+            i++; // skip colon
+
+            while (i < end && Character.isWhitespace(themes.charAt(i))) {
+                i++;
+            }
+            if (i >= end) {
+                break;
             }
 
             char valueStart = themes.charAt(i);
@@ -179,14 +200,79 @@ public final class ConfigValidator {
             if (valueStart != '{') {
                 report.error("themes." + key + " must be an object. Non-object entries should be prefixed with '_' comments.");
             }
+
+            int nextValuePos = skipJsonValue(themes, i);
+            i = nextValuePos > i ? nextValuePos : i + 1;
         }
+    }
+
+    private static int skipWhitespaceAndCommas(String text, int start, int end) {
+        int i = start;
+        while (i < end) {
+            char c = text.charAt(i);
+            if (Character.isWhitespace(c) || c == ',') {
+                i++;
+                continue;
+            }
+            break;
+        }
+        return i;
+    }
+
+    private static int findStringEnd(String text, int start) {
+        boolean escaped = false;
+        for (int i = start; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+            if (c == '\\') {
+                escaped = true;
+                continue;
+            }
+            if (c == '"') {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static int skipJsonValue(String json, int valueStart) {
+        if (valueStart < 0 || valueStart >= json.length()) {
+            return valueStart;
+        }
+
+        char valueType = json.charAt(valueStart);
+        if (valueType == '{') {
+            String object = extractObjectFromPosition(json, valueStart);
+            return object != null ? valueStart + object.length() : valueStart + 1;
+        }
+        if (valueType == '[') {
+            String array = extractArrayFromPosition(json, valueStart);
+            return array != null ? valueStart + array.length() : valueStart + 1;
+        }
+        if (valueType == '"') {
+            int stringEnd = findStringEnd(json, valueStart + 1);
+            return stringEnd >= 0 ? stringEnd + 1 : valueStart + 1;
+        }
+
+        int i = valueStart;
+        while (i < json.length()) {
+            char c = json.charAt(i);
+            if (c == ',' || c == '}') {
+                break;
+            }
+            i++;
+        }
+        return i;
     }
 
     private static void validateTierBlocks(String json, ConfigValidationReport report) {
         String tierSettings = extractJsonObject(json, "tierSettings");
         String rewardSettings = extractJsonObject(json, "rewardSettings");
 
-        for (int tier = 1; tier <= 4; tier++) {
+        for (int tier = 1; tier <= 5; tier++) {
             if (tierSettings != null && extractJsonObject(tierSettings, String.valueOf(tier)) == null) {
                 report.warn("tierSettings." + tier + " missing; default tier settings will be used.");
             }

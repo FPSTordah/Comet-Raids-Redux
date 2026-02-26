@@ -91,8 +91,6 @@ public class TierRewards {
         rewards.addDrop(new RewardEntry("Ingredient_Bar_Copper", 5, 7, 100, "Copper Ingots"));
         rewards.addDrop(new RewardEntry("Ingredient_Leather_Light", 2, 3, 100, "Light Leather"));
         rewards.addDrop(new RewardEntry("Potion_Health_Lesser", 1, 2, 100, "Lesser Health Potion"));
-        rewards.addDrop(new RewardEntry("Weapon_Bomb", 3, 4, 100, "Bombs"));
-        rewards.addDrop(new RewardEntry("Weapon_Bomb_Potion_Poison", 1, 1, 100, "Poison Potion Bomb"));
         return rewards;
     }
 
@@ -103,9 +101,6 @@ public class TierRewards {
         rewards.addDrop(new RewardEntry("Potion_Health", 1, 2, 100, "Potion of Health"));
         rewards.addDrop(new RewardEntry("Ingredient_Fire_Essence", 3, 4, 100, "Essence of Fire"));
         rewards.addDrop(new RewardEntry("Ingredient_Fabric_Scrap_Shadoweave", 5, 5, 100, "Shadoweave Scraps"));
-        rewards.addDrop(new RewardEntry("Weapon_Bomb", 4, 5, 100, "Bombs"));
-        rewards.addDrop(new RewardEntry("Weapon_Bomb_Potion_Poison", 1, 2, 100, "Poison Potion Bomb"));
-
         // Bonus drops (35% chance each)
         rewards.addBonusDrop(new RewardEntry("Ingredient_Bar_Copper", 2, 4, 35, "Copper Ingots"));
         rewards.addBonusDrop(new RewardEntry("Potion_Health_Lesser", 1, 1, 35, "Lesser Health Potion"));
@@ -121,9 +116,6 @@ public class TierRewards {
         rewards.addDrop(new RewardEntry("Potion_Health_Greater", 1, 2, 100, "Greater Health Potion"));
         rewards.addDrop(new RewardEntry("Ingredient_Fire_Essence", 3, 4, 100, "Essence of Fire"));
         rewards.addDrop(new RewardEntry("Ingredient_Fabric_Scrap_Shadoweave", 5, 5, 100, "Shadoweave Scraps"));
-        rewards.addDrop(new RewardEntry("Weapon_Bomb", 5, 6, 100, "Bombs"));
-        rewards.addDrop(new RewardEntry("Weapon_Bomb_Potion_Poison", 2, 3, 100, "Poison Potion Bomb"));
-
         // Bonus drops (30% chance each)
         rewards.addBonusDrop(new RewardEntry("Ingredient_Bar_Copper", 2, 4, 30, "Copper Ingots"));
         rewards.addBonusDrop(new RewardEntry("Ingredient_Bar_Iron", 2, 4, 30, "Iron Ingots"));
@@ -139,9 +131,6 @@ public class TierRewards {
         rewards.addDrop(new RewardEntry("Potion_Health_Greater", 2, 3, 100, "Greater Health Potion"));
         rewards.addDrop(new RewardEntry("Ingredient_Fire_Essence", 4, 6, 100, "Essence of Fire"));
         rewards.addDrop(new RewardEntry("Ingredient_Fabric_Scrap_Shadoweave", 8, 10, 100, "Shadoweave Scraps"));
-        rewards.addDrop(new RewardEntry("Weapon_Bomb", 6, 8, 100, "Bombs"));
-        rewards.addDrop(new RewardEntry("Weapon_Bomb_Potion_Poison", 3, 4, 100, "Poison Potion Bomb"));
-
         // Bonus drops (25% chance each)
         rewards.addBonusDrop(new RewardEntry("Ingredient_Bar_Copper", 3, 5, 25, "Copper Ingots"));
         rewards.addBonusDrop(new RewardEntry("Ingredient_Bar_Iron", 3, 5, 25, "Iron Ingots"));
@@ -149,6 +138,21 @@ public class TierRewards {
         rewards.addBonusDrop(new RewardEntry("Ingredient_Bar_Thorium", 2, 4, 25, "Thorium Ingots"));
         rewards.addBonusDrop(new RewardEntry("Potion_Health_Lesser", 1, 2, 25, "Lesser Health Potion"));
         rewards.addBonusDrop(new RewardEntry("Potion_Health", 1, 2, 25, "Potion of Health"));
+        return rewards;
+    }
+
+    public static TierRewards getDefaultTier5() {
+        TierRewards rewards = new TierRewards();
+        rewards.addDrop(new RewardEntry("Ingredient_Bar_Prisma", 6, 9, 100, "Prisma Bars"));
+        rewards.addDrop(new RewardEntry("Ingredient_Bar_Onyxium", 6, 9, 100, "Onyxium Bars"));
+        rewards.addDrop(new RewardEntry("Ingredient_Hide_Prismic", 4, 6, 100, "Prismic Hide"));
+        rewards.addDrop(new RewardEntry("Ingredient_Hide_Storm", 4, 6, 100, "Storm Hide"));
+        rewards.addDrop(new RewardEntry("Ingredient_Fabric_Scrap_Cindercloth", 8, 12, 100, "Cindercloth Scraps"));
+        rewards.addDrop(new RewardEntry("Ingredient_Fabric_Scrap_Shadoweave", 8, 12, 100, "Shadoweave Scraps"));
+        rewards.addDrop(new RewardEntry("Potion_Health_Greater", 2, 3, 100, "Greater Health Potion"));
+        rewards.addBonusDrop(new RewardEntry("Ingredient_Bar_Adamantite", 2, 4, 30, "Adamantite Ingots"));
+        rewards.addBonusDrop(new RewardEntry("Ingredient_Hide_Prismic", 2, 3, 30, "Prismic Hide"));
+        rewards.addBonusDrop(new RewardEntry("Ingredient_Hide_Storm", 2, 3, 30, "Storm Hide"));
         return rewards;
     }
 
@@ -162,6 +166,8 @@ public class TierRewards {
                 return getDefaultTier3();
             case 4:
                 return getDefaultTier4();
+            case 5:
+                return getDefaultTier5();
             default:
                 return getDefaultTier1();
         }

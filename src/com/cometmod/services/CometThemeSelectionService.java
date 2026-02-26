@@ -22,7 +22,6 @@ public class CometThemeSelectionService {
             Vector3i blockPos,
             CometTier tier,
             Map<Vector3i, String> forcedThemes,
-            String legacyFallbackThemeId,
             Logger logger) {
 
         String themeId;
@@ -37,7 +36,15 @@ public class CometThemeSelectionService {
             return themeId;
         }
 
-        logger.warning("Config-based theme selection failed, using legacy fallback theme id: " + legacyFallbackThemeId);
-        return legacyFallbackThemeId;
+        // If random selection fails, fall back to the first configured theme deterministically.
+        String[] allThemeIds = WaveThemeProvider.getAllThemeIds();
+        if (allThemeIds.length > 0) {
+            logger.warning("Theme selection failed for tier " + tier.getName()
+                    + "; falling back to first configured theme: " + allThemeIds[0]);
+            return allThemeIds[0];
+        }
+
+        logger.severe("Theme selection failed and no configured themes are available.");
+        return null;
     }
 }

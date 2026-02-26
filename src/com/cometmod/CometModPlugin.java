@@ -106,6 +106,8 @@ public class CometModPlugin extends JavaPlugin {
                 CometStoneActivateInteraction.class, CometStoneActivateInteraction.CODEC);
         getCodecRegistry(Interaction.CODEC).register("Comet_Stone_Legendary_Activate",
                 CometStoneActivateInteraction.class, CometStoneActivateInteraction.CODEC);
+        getCodecRegistry(Interaction.CODEC).register("Comet_Stone_Mythic_Activate",
+                CometStoneActivateInteraction.class, CometStoneActivateInteraction.CODEC);
         getCodecRegistry(Interaction.CODEC).register("Comet_OpenRewardChest",
                 CometOpenRewardChestInteraction.class, CometOpenRewardChestInteraction.CODEC);
 
@@ -226,12 +228,6 @@ public class CometModPlugin extends JavaPlugin {
         }
 
         try {
-            getEntityStoreRegistry().registerSystem(new CometLootChestTouchSystem());
-        } catch (Exception e) {
-            LOGGER.warning("Failed to register CometLootChestTouchSystem: " + e.getMessage());
-        }
-
-        try {
             getEntityStoreRegistry().registerSystem(new CometLootChestNeighborUseSystem());
         } catch (Exception e) {
             LOGGER.warning("Failed to register CometLootChestNeighborUseSystem: " + e.getMessage());
@@ -338,15 +334,17 @@ public class CometModPlugin extends JavaPlugin {
                                     CometTier tier = this.fallingSystem.getProjectileTier(entityUUID);
                                     String themeId = this.fallingSystem.getProjectileThemeId(entityUUID);
                                     java.util.UUID ownerUUID = this.fallingSystem.getProjectileOwner(entityUUID);
-                                    this.fallingSystem.spawnCometBlock(world, actualBlockPos, store, tier, themeId, ownerUUID);
+                                    int zoneId = this.fallingSystem.getProjectileZone(entityUUID);
+                                    this.fallingSystem.spawnCometBlock(world, actualBlockPos, store, tier, themeId, ownerUUID, zoneId);
                                     this.fallingSystem.removeTrackedProjectile(entityUUID);
                                 });
                             } else if (world != null) {
                                 CometTier tier = this.fallingSystem.getProjectileTier(entityUUID);
                                 String themeId = this.fallingSystem.getProjectileThemeId(entityUUID);
                                 java.util.UUID ownerUUID = this.fallingSystem.getProjectileOwner(entityUUID);
+                                int zoneId = this.fallingSystem.getProjectileZone(entityUUID);
                                 world.execute(() -> {
-                                    this.fallingSystem.spawnCometBlock(world, targetPos, store, tier, themeId, ownerUUID);
+                                    this.fallingSystem.spawnCometBlock(world, targetPos, store, tier, themeId, ownerUUID, zoneId);
                                     this.fallingSystem.removeTrackedProjectile(entityUUID);
                                 });
                             }

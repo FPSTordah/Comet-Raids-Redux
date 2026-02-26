@@ -29,25 +29,6 @@ import java.util.logging.Logger;
 
 /**
  * Manages comet wave spawning, combat, and rewards.
- * 
- * CROSS-TIER THEME SYSTEM:
- * Each comet tier can spawn themes from adjacent tiers (+/- 1 tier).
- * The mob's tier suffix matches the COMET tier (not the theme's native tier),
- * so mobs are scaled appropriately.
- * 
- * - Tier 1 (Uncommon): Tier 1 themes + Tier 2 themes (nerfed to Tier 1 stats)
- * - Tier 2 (Rare): Tier 1 (buffed) + Tier 2 (native) + Tier 3 themes (nerfed)
- * - Tier 3 (Epic): Tier 2 (buffed) + Tier 3 (native) + Tier 4 themes (nerfed)
- * - Tier 4 (Legendary): Tier 3 (buffed) + Tier 4 (native)
- * 
- * Theme Native Tiers:
- * - Tier 1: Skeleton, Goblin, Spider
- * - Tier 2: Trork, Skeleton Sand, Sabertooth
- * - Tier 3: Outlander, Leopard
- * - Tier 4: Toad, Skeleton Burnt
- * 
- * The difficulty progression is: Uncommon (1) < Rare (2) < Epic (3) < Legendary
- * (4)
  */
 public class CometWaveManager {
     private static final Logger LOGGER = Logger.getLogger("CometWaveManager");
@@ -60,10 +41,11 @@ public class CometWaveManager {
     private final CometRewardService rewardService = new CometRewardService();
     private final CometWaveUiService waveUiService = new CometWaveUiService();
 
-    // Legacy aliases preserved while internals are migrated to focused services.
+    // State aliases for concise access throughout this class.
     private final Map<Vector3i, CometState> activeComets = waveState.activeComets();
     private final Map<Vector3i, CometTier> cometTiers = waveState.cometTiers();
     private final Map<Vector3i, java.util.UUID> cometOwners = waveState.cometOwners();
+    private final Map<Vector3i, Integer> cometZones = waveState.cometZones();
 
     public void setPlugin(com.hypixel.hytale.server.core.plugin.PluginBase plugin) {
         this.plugin = plugin;
@@ -71,86 +53,6 @@ public class CometWaveManager {
 
     private static final int WAVE_MOB_COUNT = 5;
     private static final Random RANDOM = new Random();
-
-    // Bonus drop chance for lower-tier items
-    private static final double BONUS_DROP_CHANCE_TIER2 = 0.35; // 35%
-    private static final double BONUS_DROP_CHANCE_TIER3 = 0.30; // 30%
-    private static final double BONUS_DROP_CHANCE_TIER4 = 0.25; // 25%
-
-    // ========== THEME SYSTEM ==========
-    // Base mob names (without tier suffix) - tier suffix is applied dynamically
-    // based on comet tier
-
-    // Tier 1 Native Themes (Skeleton, Goblin, Spider)
-    private static final String[] THEME_SKELETON_MOBS = { "Skeleton_Soldier", "Skeleton_Archer", "Skeleton_Archmage" };
-    private static final String[] THEME_GOBLIN_MOBS = { "Goblin_Scrapper", "Goblin_Miner", "Goblin_Lobber" };
-    private static final String[] THEME_SPIDER_MOBS = { "Spider" };
-    private static final String THEME_SPIDER_BOSS = "Spider_Broodmother";
-    private static final String[] TIER1_BOSSES_BASE = { "Bear_Polar", "Wolf_Black" };
-
-    // Tier 2 Native Themes (Trork, Skeleton Sand, Sabertooth)
-    private static final String[] THEME_TRORK_MOBS = { "Trork_Warrior", "Trork_Hunter", "Trork_Mauler", "Trork_Shaman",
-            "Trork_Brawler" };
-    private static final String THEME_TRORK_BOSS = "Trork_Chieftain";
-    private static final String[] THEME_SKELETON_SAND_MOBS = { "Skeleton_Sand_Archer", "Skeleton_Sand_Assassin",
-            "Skeleton_Sand_Guard", "Skeleton_Sand_Mage", "Skeleton_Sand_Ranger", "Skeleton_Sand_Archmage" };
-    private static final String[] THEME_SABERTOOTH_MOBS = { "Tiger_Sabertooth" };
-    private static final String[] TIER2_BOSSES_BASE = { "Bear_Grizzly", "Skeleton_Burnt_Alchemist" };
-
-    // Tier 3 Native Themes (Outlander, Leopard)
-    private static final String[] THEME_OUTLANDER_MOBS = { "Outlander_Berserker", "Outlander_Cultist",
-            "Outlander_Hunter", "Outlander_Stalker", "Outlander_Priest", "Outlander_Brute" };
-    private static final String[] THEME_LEOPARD_MOBS = { "Leopard_Snow" };
-    private static final String TIER3_BOSS_BASE = "Werewolf";
-
-    // Tier 4 Native Themes (Toad, Skeleton Burnt)
-    private static final String[] THEME_TOAD_MOBS = { "Toad_Rhino_Magma" };
-    private static final String[] THEME_SKELETON_BURNT_MOBS = { "Skeleton_Burnt_Archer", "Skeleton_Burnt_Gunner",
-            "Skeleton_Burnt_Knight", "Skeleton_Burnt_Lancer" };
-    private static final String THEME_SKELETON_BURNT_BOSS = "Skeleton_Burnt_Praetorian";
-    private static final String[] TIER4_BOSSES_BASE = { "Shadow_Knight", "Zombie_Aberrant" };
-
-    // Void theme - available in all 4 comet tiers; wave 1: 2 Crawler + 2 Spectre;
-    // boss: Spawn_Void
-    private static final String[] THEME_VOID_MOBS = { "Crawler_Void", "Spectre_Void" };
-    private static final String THEME_VOID_BOSS = "Spawn_Void";
-
-    // Theme native tiers (which tier each theme naturally belongs to). Cross-tier:
-    // comet can pick if |native - cometTier| <= 1.
-    private static final int[] THEME_NATIVE_TIER = {
-            1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 2, // 0-10: Skeleton, Goblin, Spider, Trork, SkeletonSand, Sabertooth,
-                                             // Outlander, Leopard, Toad, SkeletonBurnt, Void
-            4, 4, 4, 4, 2, 4, 4 // 11-17: Ice, BurntLegendary, Lava, Earth, UndeadRare, UndeadLegendary, Zombie
-    };
-
-    // Theme identifiers
-    private static final int THEME_SKELETON = 0;
-    private static final int THEME_GOBLIN = 1;
-    private static final int THEME_SPIDER = 2;
-    private static final int THEME_TRORK = 3;
-    private static final int THEME_SKELETON_SAND = 4;
-    private static final int THEME_SABERTOOTH = 5;
-    private static final int THEME_OUTLANDER = 6;
-    private static final int THEME_LEOPARD = 7;
-    private static final int THEME_TOAD = 8;
-    private static final int THEME_SKELETON_BURNT = 9;
-    private static final int THEME_VOID = 10;
-    private static final int THEME_ICE = 11;
-    private static final int THEME_BURNT_LEGENDARY = 12;
-    private static final int THEME_LAVA = 13;
-    private static final int THEME_EARTH = 14;
-    private static final int THEME_UNDEAD_RARE = 15;
-    private static final int THEME_UNDEAD_LEGENDARY = 16;
-    private static final int THEME_ZOMBIE = 17;
-
-    // Theme display names
-    private static final String[] THEME_NAMES = {
-            "Skeleton Horde", "Goblin Gang", "Spider Swarm", "Trork Warband",
-            "Sand Skeleton Legion", "Sabertooth Pack", "Outlander Cult", "Snow Leopard Pride",
-            "Magma Toads", "Burnt Legion", "Voidspawn", "Legendary Ice",
-            "Burnt Legion", "Legendary Lava", "Legendary Earth", "Rare Undead",
-            "Legendary Undead", "Zombie Aberration"
-    };
 
     // Track current/forced theme IDs for comet blocks.
     private final Map<Vector3i, String> cometThemes = waveState.cometThemes();
@@ -161,10 +63,7 @@ public class CometWaveManager {
     private static final long TIER2_TIMEOUT = 150000; // 150 seconds / 2.5 min (Rare)
     private static final long TIER3_TIMEOUT = 180000; // 180 seconds / 3 min (Epic)
     private static final long TIER4_TIMEOUT = 240000; // 240 seconds / 4 min (Legendary)
-
-    // Spawn radii per tier
-    private static final double[] TIER_MIN_RADIUS = { 3.0, 4.0, 5.0, 6.0 };
-    private static final double[] TIER_MAX_RADIUS = { 5.0, 6.0, 7.0, 8.0 };
+    private static final long TIER5_TIMEOUT = 300000; // 300 seconds / 5 min (Mythic)
 
     // Max ranged mobs per wave (applies to ALL tiers)
     private static final int MAX_RANGED_PER_WAVE = 1;
@@ -386,6 +285,7 @@ public class CometWaveManager {
                         break;
                     }
                 }
+                tier = CometConfig.clampUnavailableTier(tier);
                 cometTiers.put(blockPos, tier);
 
                 // Don't check if empty here - the droplist might not have populated yet
@@ -401,6 +301,7 @@ public class CometWaveManager {
         if (tier == null) {
             tier = CometTier.UNCOMMON; // Default
         }
+        tier = CometConfig.clampUnavailableTier(tier);
         cometTiers.put(blockPos, tier);
 
         // Check if this comet is already active (in memory)
@@ -489,18 +390,18 @@ public class CometWaveManager {
     }
 
     /**
-     * Helper to spawn an NPC and register it for stat modifiers if the theme has
-     * them configured.
+     * Helper to spawn an NPC and register global tier-based stat modifiers.
      * This wraps the standard spawnNPC call and adds stat modifier registration.
      * 
      * @param store     The entity store
      * @param npcPlugin The NPC plugin
      * @param npcType   The full NPC type string (with tier suffix)
-     * @param baseMobId The base mob ID (without tier suffix) for config lookup
+     * @param baseMobId The base mob ID (without tier suffix)
      * @param spawnPos  The spawn position
      * @param rotation  The rotation
-     * @param themeId   The theme ID for stat multiplier lookup
+     * @param themeId   The theme ID (kept for compatibility with existing call sites)
      * @param tier      The comet tier
+     * @param zoneLevel The comet zone level/index
      * @param isBoss    Whether this is a boss spawn
      * @return The spawn result pair, or null if failed
      */
@@ -513,6 +414,7 @@ public class CometWaveManager {
             Vector3f rotation,
             String themeId,
             CometTier tier,
+            int zoneLevel,
             boolean isBoss) {
 
         try {
@@ -520,13 +422,13 @@ public class CometWaveManager {
                     .spawnNPC(store, npcType, null, spawnPos, rotation);
 
             if (result != null && result.first() != null) {
-                // Try to register stat modifiers if the theme has them
+                // Apply global tier stat scaling (vanilla base + per-tier increase)
                 try {
                     float[] multipliers = null;
                     if (isBoss) {
-                        multipliers = WaveThemeProvider.getBossStatMultipliers(themeId, tier, baseMobId);
+                        multipliers = WaveThemeProvider.getBossStatMultipliers(themeId, tier, baseMobId, zoneLevel);
                     } else {
-                        multipliers = WaveThemeProvider.getMobStatMultipliers(themeId, tier, baseMobId);
+                        multipliers = WaveThemeProvider.getMobStatMultipliers(themeId, tier, baseMobId, zoneLevel);
                     }
 
                     if (multipliers != null && multipliers.length >= 4) {
@@ -545,9 +447,9 @@ public class CometWaveManager {
                             // Call directly to apply modifiers immediately (fixes timing issue)
                             CometStatModifierSystem.applyModifiers(store, result.first(), hpMult, damageMult,
                                     scaleMult, speedMult);
-                            LOGGER.info("[CometWave] Applied stat modifiers for " + npcType +
+                            LOGGER.info("[CometWave] Applied tier stat scaling for " + npcType +
                                     " (UUID: " + npcUUID + "): HP=" + hpMult + "x, Dmg=" + damageMult + "x, Scale="
-                                    + scaleMult + "x, Speed=" + speedMult + "x");
+                                    + scaleMult + "x, Speed=" + speedMult + "x, ZoneLevel=" + zoneLevel);
                         }
                     }
                 } catch (Exception e) {
@@ -574,14 +476,17 @@ public class CometWaveManager {
         WaveData waveData = new WaveData(blockPos, playerRef);
         activeWaves.put(blockPos, waveData);
 
-        // Select theme and get mob list based on tier (service handles forced/config/fallback).
-        String legacyFallbackThemeId = getLegacyThemeId(selectThemeLegacy(tier));
+        // Select theme and get mob list based on tier.
         String themeId = themeSelectionService.selectThemeId(
                 blockPos,
                 tier,
                 forcedThemes,
-                legacyFallbackThemeId,
                 LOGGER);
+        if (themeId == null || themeId.isBlank()) {
+            LOGGER.severe("Could not resolve a theme for tier " + tier.getName() + " at " + blockPos);
+            activeWaves.remove(blockPos);
+            return;
+        }
 
         cometThemes.put(blockPos, themeId);
 
@@ -596,24 +501,11 @@ public class CometWaveManager {
         // Get mob list for wave 0 (first wave)
         String[] mobList = WaveThemeProvider.getMobListForWave(tier, themeId, 0);
 
-        LOGGER.info("[DEBUG] getMobListForTheme returned: " + (mobList == null ? "null" : mobList.length + " mobs"));
-        if (mobList != null && mobList.length > 0) {
-            LOGGER.info("[DEBUG] First 3 mobs: " + String.join(", ", java.util.Arrays.copyOf(mobList, Math.min(3, mobList.length))));
-        }
-
-        // Fallback to legacy mob list if config-based returns empty
-        if (mobList == null || mobList.length == 0) {
-            LOGGER.warning("[DEBUG] Config mob list empty, falling back to legacy system for theme: " + themeId);
-            int legacyTheme = getLegacyThemeIndex(themeId);
-            if (legacyTheme >= 0) {
-                mobList = getMobListForThemeLegacy(tier, legacyTheme);
-                LOGGER.info("[DEBUG] Legacy system returned " + (mobList == null ? "null" : mobList.length + " mobs"));
-            }
-        }
-
         // Store theme name for display
         waveData.themeName = WaveThemeProvider.getThemeName(themeId);
         LOGGER.info("Selected theme: " + waveData.themeName + " (ID: " + themeId + ") for tier " + tier.getName());
+
+        int zoneLevel = Math.max(0, cometZones.getOrDefault(blockPos, 0));
 
         if (mobList == null || mobList.length == 0) {
             LOGGER.warning("No mobs available for tier " + tier.getName() + " theme " + themeId);
@@ -632,10 +524,6 @@ public class CometWaveManager {
         java.util.List<String> mobListShuffled = new java.util.ArrayList<>(java.util.Arrays.asList(mobList));
         java.util.Collections.shuffle(mobListShuffled, RANDOM);
         mobList = mobListShuffled.toArray(new String[0]);
-
-        // Get legacy theme integer for backwards compatibility with fixed composition
-        // logic
-        int theme = getLegacyThemeIndex(themeId);
 
         // Track ranged mobs - max 1 ranged per wave for ALL tiers
         int rangedCount = 0;
@@ -656,121 +544,64 @@ public class CometWaveManager {
         List<Vector3d> successPositions = new ArrayList<>();
         List<FailedSpawnInfo> failedSpawns = new ArrayList<>();
 
-        // Spawn mobs in a circle around the comet
-        String[] fb = getFixedCompBases(tier, theme);
-        if (fb != null) {
-            int[] fc = getFixedCompCounts(tier, theme);
-            // Outlander Legendary: 30% of waves get 1 Priest (rare spawn)
-            if (theme == THEME_OUTLANDER && tier == CometTier.LEGENDARY && RANDOM.nextDouble() < 0.3)
-                fc = new int[] { 3, 1, 2, 1 };
-            int idx = 0;
-            for (int i = 0; i < fb.length; i++) {
-                for (int j = 0; j < fc[i]; j++) {
-                    double angle = (2.0 * Math.PI * idx) / waveMobCount;
-                    double radius = minRadius + (Math.random() * (maxRadius - minRadius));
-                    Vector3d spawnPos = new Vector3d(centerPos.x + Math.cos(angle) * radius, centerPos.y,
-                            centerPos.z + Math.sin(angle) * radius);
-                    Vector3d toSpawn = spawnPos;
-                    if (world != null) {
-                        Vector3d v = CometSpawnUtil.findValidMobSpawn(world, spawnPos, 11);
-                        if (v != null)
-                            toSpawn = v;
-                        else {
-                            String npc = applyTierSuffix(fb[i], tier);
-                            failedSpawns.add(new FailedSpawnInfo(npc,
-                                    new Vector3f(0.0f, (float) (angle + Math.PI), 0.0f), isRangedMob(npc)));
-                            LOGGER.info("No valid mob spawn at " + spawnPos + ", will retry near success: " + npc);
-                            idx++;
-                            continue;
-                        }
-                    }
-                    Vector3f rot = new Vector3f(0.0f, (float) (angle + Math.PI), 0.0f);
-                    String npcType = applyTierSuffix(fb[i], tier);
-                    String baseMobId = fb[i]; // Base mob ID for config lookup
-                    Pair<Ref<EntityStore>, com.hypixel.hytale.server.core.universe.world.npc.INonPlayerCharacter> res = spawnCometNPC(
-                            store, npcPlugin, npcType, baseMobId, toSpawn, rot, themeId, tier, false);
-                    if (res != null && res.first() != null) {
-                        waveData.spawnedMobs.add(res.first());
-                        successPositions.add(toSpawn);
-                        LOGGER.info("Spawned " + npcType + " at " + toSpawn);
-                    } else {
-                        LOGGER.warning("Failed to spawn NPC: " + npcType);
-                    }
-                    idx++;
-                }
-            }
-        } else {
-            for (int i = 0; i < waveMobCount; i++) {
-                double angle = (2.0 * Math.PI * i) / waveMobCount;
-                double radius = minRadius + (Math.random() * (maxRadius - minRadius));
-                double x = centerPos.x + Math.cos(angle) * radius;
-                double y = centerPos.y;
-                double z = centerPos.z + Math.sin(angle) * radius;
+        // Spawn mobs from configured wave composition in a circle around the comet
+        for (int i = 0; i < waveMobCount; i++) {
+            double angle = (2.0 * Math.PI * i) / waveMobCount;
+            double radius = minRadius + (Math.random() * (maxRadius - minRadius));
+            double x = centerPos.x + Math.cos(angle) * radius;
+            double y = centerPos.y;
+            double z = centerPos.z + Math.sin(angle) * radius;
 
-                Vector3d spawnPos = new Vector3d(x, y, z);
-                Vector3f rotation = new Vector3f(0.0f, (float) (angle + Math.PI), 0.0f);
+            Vector3d spawnPos = new Vector3d(x, y, z);
+            Vector3f rotation = new Vector3f(0.0f, (float) (angle + Math.PI), 0.0f);
 
-                String npcType;
-                if (tier == CometTier.UNCOMMON && theme == THEME_SKELETON) {
-                    if (i < 3)
-                        npcType = applyTierSuffix("Skeleton_Soldier", tier);
-                    else
-                        npcType = applyTierSuffix(RANDOM.nextBoolean() ? "Skeleton_Archer" : "Skeleton_Archmage", tier);
-                } else if (theme == THEME_OUTLANDER && tier == CometTier.EPIC && rangedCount < MAX_RANGED_PER_WAVE
-                        && RANDOM.nextDouble() < 0.05) {
-                    // Outlander Epic: Priest is a rare spawn (5% per slot)
-                    npcType = applyTierSuffix("Outlander_Priest", tier);
-                } else {
-                    // Use shuffled array index to maintain exact counts from config
-                    npcType = mobList[i];
-                    if (rangedCount >= MAX_RANGED_PER_WAVE) {
-                        String nonRangedType = null;
-                        for (String mob : mobList) {
-                            boolean isRanged = false;
-                            for (String ranged : rangedMobs) {
-                                if (mob.contains(ranged)) {
-                                    isRanged = true;
-                                    break;
-                                }
-                            }
-                            if (!isRanged) {
-                                nonRangedType = mob;
-                                break;
-                            }
-                        }
-                        if (nonRangedType != null)
-                            npcType = nonRangedType;
-                    }
+            String npcType = mobList[i];
+            if (rangedCount >= MAX_RANGED_PER_WAVE) {
+                String nonRangedType = null;
+                for (String mob : mobList) {
+                    boolean isRanged = false;
                     for (String ranged : rangedMobs) {
-                        if (npcType.contains(ranged)) {
-                            rangedCount++;
+                        if (mob.contains(ranged)) {
+                            isRanged = true;
                             break;
                         }
                     }
-                }
-
-                Vector3d toSpawn = spawnPos;
-                if (world != null) {
-                    Vector3d v = CometSpawnUtil.findValidMobSpawn(world, spawnPos, 11);
-                    if (v != null)
-                        toSpawn = v;
-                    else {
-                        failedSpawns.add(new FailedSpawnInfo(npcType, rotation, isRangedMob(npcType)));
-                        LOGGER.info("No valid mob spawn at " + spawnPos + ", will retry near success: " + npcType);
-                        continue;
+                    if (!isRanged) {
+                        nonRangedType = mob;
+                        break;
                     }
                 }
-
-                // Mob IDs are base IDs without tier suffixes
-                Pair<Ref<EntityStore>, com.hypixel.hytale.server.core.universe.world.npc.INonPlayerCharacter> result = spawnCometNPC(
-                        store, npcPlugin, npcType, npcType, toSpawn, rotation, themeId, tier, false);
-                if (result != null && result.first() != null) {
-                    waveData.spawnedMobs.add(result.first());
-                    successPositions.add(toSpawn);
-                    LOGGER.info("Spawned " + npcType + " at " + toSpawn);
-                } else {
-                    LOGGER.warning("Failed to spawn NPC: " + npcType);
+                if (nonRangedType != null) {
+                    npcType = nonRangedType;
                 }
+            }
+            for (String ranged : rangedMobs) {
+                if (npcType.contains(ranged)) {
+                    rangedCount++;
+                    break;
+                }
+            }
+
+            Vector3d toSpawn = spawnPos;
+            if (world != null) {
+                Vector3d v = CometSpawnUtil.findValidMobSpawn(world, spawnPos, 11);
+                if (v != null) {
+                    toSpawn = v;
+                } else {
+                    failedSpawns.add(new FailedSpawnInfo(npcType, rotation, isRangedMob(npcType)));
+                    LOGGER.info("No valid mob spawn at " + spawnPos + ", will retry near success: " + npcType);
+                    continue;
+                }
+            }
+
+            Pair<Ref<EntityStore>, com.hypixel.hytale.server.core.universe.world.npc.INonPlayerCharacter> result = spawnCometNPC(
+                    store, npcPlugin, npcType, npcType, toSpawn, rotation, themeId, tier, zoneLevel, false);
+            if (result != null && result.first() != null) {
+                waveData.spawnedMobs.add(result.first());
+                successPositions.add(toSpawn);
+                LOGGER.info("Spawned " + npcType + " at " + toSpawn);
+            } else {
+                LOGGER.warning("Failed to spawn NPC: " + npcType);
             }
         }
 
@@ -785,7 +616,7 @@ public class CometWaveManager {
                 if (retryPos != null) {
                     // Mob IDs are base IDs without tier suffixes
                     Pair<Ref<EntityStore>, com.hypixel.hytale.server.core.universe.world.npc.INonPlayerCharacter> res = spawnCometNPC(
-                            store, npcPlugin, f.npcType, f.npcType, retryPos, f.rotation, themeId, tier, false);
+                            store, npcPlugin, f.npcType, f.npcType, retryPos, f.rotation, themeId, tier, zoneLevel, false);
                     if (res != null && res.first() != null) {
                         waveData.spawnedMobs.add(res.first());
                         successPositions.add(retryPos);
@@ -807,259 +638,6 @@ public class CometWaveManager {
     }
 
     /**
-     * Get the display name for a theme
-     */
-    private String getThemeName(int theme) {
-        if (theme >= 0 && theme < THEME_NAMES.length) {
-            return THEME_NAMES[theme];
-        }
-        return "Unknown";
-    }
-
-    /**
-     * Select a random theme for the given comet tier.
-     * Cross-tier system: Each tier can access themes from adjacent tiers (+/- 1).
-     * - Tier 1: Tier 1 themes + Tier 2 themes (nerfed)
-     * - Tier 2: Tier 1 themes (buffed) + Tier 2 themes + Tier 3 themes (nerfed)
-     * - Tier 3: Tier 2 themes (buffed) + Tier 3 themes + Tier 4 themes (nerfed)
-     * - Tier 4: Tier 3 themes (buffed) + Tier 4 themes
-     */
-    private int selectTheme(CometTier tier) {
-        List<Integer> availableThemes = new ArrayList<>();
-        int cometTierNum = getTierIndex(tier) + 1; // 1-4
-
-        // Add all themes within +/- 1 tier of the comet tier. Void: Uncommon/Rare/Epic
-        // only (excluded at Legendary)
-        for (int theme = 0; theme < THEME_NATIVE_TIER.length; theme++) {
-            int themeNativeTier = THEME_NATIVE_TIER[theme];
-            if (theme == THEME_VOID) {
-                if (cometTierNum < 4)
-                    availableThemes.add(theme); // Void not at Legendary
-            } else if (Math.abs(themeNativeTier - cometTierNum) <= 1) {
-                availableThemes.add(theme);
-            }
-        }
-
-        if (availableThemes.isEmpty()) {
-            // Fallback - should never happen
-            LOGGER.warning("No available themes for tier " + tier.getName() + ", defaulting to Skeleton");
-            return THEME_SKELETON;
-        }
-
-        return availableThemes.get(RANDOM.nextInt(availableThemes.size()));
-    }
-
-    /**
-     * Get the tier suffix string (e.g., "_Tier1", "_Tier2", etc.)
-     */
-    private String getTierSuffix(CometTier tier) {
-        switch (tier) {
-            case UNCOMMON:
-                return "_Tier1";
-            case RARE:
-                return "_Tier2";
-            case EPIC:
-                return "_Tier3";
-            case LEGENDARY:
-                return "_Tier4";
-            default:
-                return "_Tier1";
-        }
-    }
-
-    /**
-     * Apply tier suffix to a base mob name
-     */
-    private String applyTierSuffix(String baseName, CometTier tier) {
-        // Now using base NPCs with dynamic stat multipliers instead of tiered JSON
-        // files.
-        return baseName;
-    }
-
-    /**
-     * Get mob list for a theme, with tier suffix applied based on comet tier.
-     * This enables cross-tier spawning (e.g., Sabertooth in Tier 1 becomes
-     * Tiger_Sabertooth_Tier1)
-     */
-    private String[] getMobListForTheme(CometTier tier, int theme) {
-        String[] baseMobs = getBaseMobsForTheme(theme, tier);
-        if (baseMobs == null) {
-            return null;
-        }
-
-        // Apply the comet's tier suffix to all base mob names
-        String[] tieredMobs = new String[baseMobs.length];
-        for (int i = 0; i < baseMobs.length; i++) {
-            tieredMobs[i] = applyTierSuffix(baseMobs[i], tier);
-        }
-        return tieredMobs;
-    }
-
-    /**
-     * Get base mob names (without tier suffix) for a theme.
-     * Outlander: Priest is excluded in Tier 2 (Rare) and is a rare spawn in Tier 3
-     * (Epic)
-     * so it is excluded from the main pool there too.
-     */
-    private String[] getBaseMobsForTheme(int theme, CometTier tier) {
-        switch (theme) {
-            case THEME_SKELETON:
-                return THEME_SKELETON_MOBS;
-            case THEME_GOBLIN:
-                return THEME_GOBLIN_MOBS;
-            case THEME_SPIDER:
-                return THEME_SPIDER_MOBS;
-            case THEME_TRORK:
-                return THEME_TRORK_MOBS;
-            case THEME_SKELETON_SAND:
-                return THEME_SKELETON_SAND_MOBS;
-            case THEME_SABERTOOTH:
-                return THEME_SABERTOOTH_MOBS;
-            case THEME_OUTLANDER: {
-                // Priest: not in Tier 2 (Rare); in Epic it is a rare spawn handled in spawnWave
-                if (tier == CometTier.RARE || tier == CometTier.EPIC) {
-                    return java.util.Arrays.stream(THEME_OUTLANDER_MOBS)
-                            .filter(m -> !"Outlander_Priest".equals(m))
-                            .toArray(String[]::new);
-                }
-                return THEME_OUTLANDER_MOBS;
-            }
-            case THEME_LEOPARD:
-                return THEME_LEOPARD_MOBS;
-            case THEME_TOAD:
-                return THEME_TOAD_MOBS;
-            case THEME_SKELETON_BURNT:
-                return THEME_SKELETON_BURNT_MOBS;
-            case THEME_VOID:
-                return THEME_VOID_MOBS;
-            case THEME_ICE:
-                return new String[] { "Yeti", "Bear_Polar", "Golem_Crystal_Frost", "Leopard_Snow" };
-            case THEME_BURNT_LEGENDARY:
-                return new String[] { "Skeleton_Burnt_Archer", "Skeleton_Burnt_Alchemist", "Skeleton_Burnt_Lancer",
-                        "Skeleton_Burnt_Knight" };
-            case THEME_LAVA:
-                return new String[] { "Emberwulf", "Golem_Firesteel", "Spirit_Ember" };
-            case THEME_EARTH:
-                return new String[] { "Golem_Crystal_Earth", "Bear_Grizzly", "Hyena" };
-            case THEME_UNDEAD_RARE:
-                return new String[] { "Pig_Undead", "Cow_Undead", "Chicken_Undead" };
-            case THEME_UNDEAD_LEGENDARY:
-                return new String[] { "Pig_Undead", "Cow_Undead", "Chicken_Undead", "Hound_Bleached" };
-            case THEME_ZOMBIE:
-                return new String[] { "Zombie_Aberrant_Small" };
-            default:
-                return null;
-        }
-    }
-
-    /**
-     * Fixed-composition themes: return base names; null = use random from
-     * getBaseMobsForTheme.
-     */
-    private String[] getFixedCompBases(CometTier tier, int theme) {
-        if (theme == THEME_VOID) {
-            return (tier == CometTier.EPIC) ? new String[] { "Eye_Void", "Spawn_Void" }
-                    : new String[] { "Crawler_Void", "Spectre_Void" };
-        }
-        if (theme == THEME_ICE)
-            return new String[] { "Yeti", "Bear_Polar", "Golem_Crystal_Frost", "Leopard_Snow" };
-        if (theme == THEME_BURNT_LEGENDARY)
-            return new String[] { "Skeleton_Burnt_Archer", "Skeleton_Burnt_Alchemist", "Skeleton_Burnt_Lancer",
-                    "Skeleton_Burnt_Knight" };
-        if (theme == THEME_OUTLANDER && tier == CometTier.LEGENDARY)
-            return new String[] { "Outlander_Berserker", "Outlander_Brute", "Outlander_Hunter", "Outlander_Priest" };
-        if (theme == THEME_LAVA)
-            return new String[] { "Emberwulf", "Golem_Firesteel", "Spirit_Ember" };
-        if (theme == THEME_EARTH)
-            return new String[] { "Golem_Crystal_Earth", "Bear_Grizzly", "Hyena" };
-        if (theme == THEME_UNDEAD_RARE)
-            return new String[] { "Pig_Undead", "Cow_Undead", "Chicken_Undead" };
-        if (theme == THEME_UNDEAD_LEGENDARY)
-            return new String[] { "Pig_Undead", "Cow_Undead", "Chicken_Undead", "Hound_Bleached" };
-        if (theme == THEME_ZOMBIE)
-            return new String[] { "Zombie_Aberrant_Small" };
-        return null;
-    }
-
-    /** Counts for getFixedCompBases; same length. */
-    private int[] getFixedCompCounts(CometTier tier, int theme) {
-        if (theme == THEME_VOID)
-            return (tier == CometTier.EPIC) ? new int[] { 2, 3 } : new int[] { 2, 2 };
-        if (theme == THEME_ICE)
-            return new int[] { 1, 2, 1, 2 };
-        if (theme == THEME_BURNT_LEGENDARY)
-            return new int[] { 3, 1, 4, 2 };
-        // Outlander Legendary: default 0 Priest; 30% of waves get 1 Priest (overridden
-        // in spawnWave)
-        if (theme == THEME_OUTLANDER && tier == CometTier.LEGENDARY)
-            return new int[] { 4, 1, 2, 0 };
-        if (theme == THEME_LAVA)
-            return new int[] { 1, 2, 1 };
-        if (theme == THEME_EARTH)
-            return new int[] { 1, 2, 4 };
-        if (theme == THEME_UNDEAD_RARE)
-            return new int[] { 2, 1, 2 }; // Pig_Undead, Cow_Undead, Chicken_Undead (was 4,2,3; reduced – too many mobs)
-        if (theme == THEME_UNDEAD_LEGENDARY)
-            return new int[] { 8, 4, 6, 3 };
-        if (theme == THEME_ZOMBIE)
-            return new int[] { 5 };
-        return null;
-    }
-
-    /**
-     * Get wave 1 mob count. Sabertooth on Tier 1 spawns 3; Skeleton on Tier 1
-     * spawns 4 (3 melee + 1 ranged); Void spawns 4 (2 Crawler + 2 Spectre); all
-     * others use WAVE_MOB_COUNT.
-     */
-    private int getWave1MobCount(CometTier tier, int theme) {
-        if (tier == CometTier.UNCOMMON && theme == THEME_SABERTOOTH) {
-            return 4;
-        }
-        if (tier == CometTier.UNCOMMON && theme == THEME_SKELETON) {
-            return 4;
-        }
-        if (theme == THEME_VOID) {
-            return (tier == CometTier.EPIC) ? 5 : 4; // Epic: 2 Eye + 3 Spawn; else 2 Crawler + 2 Spectre
-        }
-        if (theme == THEME_ICE)
-            return 6;
-        if (theme == THEME_BURNT_LEGENDARY)
-            return 10;
-        if (theme == THEME_OUTLANDER && tier == CometTier.LEGENDARY)
-            return 7;
-        if (theme == THEME_LAVA)
-            return 4;
-        if (theme == THEME_EARTH)
-            return 7;
-        if (theme == THEME_UNDEAD_RARE)
-            return 5; // 2 Pig + 1 Cow + 2 Chicken (was 9; reduced)
-        if (theme == THEME_UNDEAD_LEGENDARY)
-            return 21;
-        if (theme == THEME_ZOMBIE)
-            return 5;
-        return WAVE_MOB_COUNT;
-    }
-
-    /**
-     * Get tier index (0-3) for array access.
-     * IMPORTANT: RARE returns 1 (Tier 2), EPIC returns 2 (Tier 3)
-     */
-    private int getTierIndex(CometTier tier) {
-        switch (tier) {
-            case UNCOMMON:
-                return 0; // Tier 1
-            case RARE:
-                return 1; // Tier 2 (easier)
-            case EPIC:
-                return 2; // Tier 3 (harder)
-            case LEGENDARY:
-                return 3; // Tier 4
-            default:
-                return 0;
-        }
-    }
-
-    /**
      * Get tier-specific timeout in milliseconds
      */
     private long getTierTimeout(CometTier tier) {
@@ -1072,91 +650,11 @@ public class CometWaveManager {
                 return TIER3_TIMEOUT;
             case LEGENDARY:
                 return TIER4_TIMEOUT;
+            case MYTHIC:
+                return TIER5_TIMEOUT;
             default:
                 return TIER1_TIMEOUT;
         }
-    }
-
-    /**
-     * Get boss NPC type for tier and theme.
-     * Boss selection is based on the theme, but tier suffix is from the comet tier.
-     * Theme-specific bosses: Trork always gets Trork_Chieftain, Skeleton Burnt
-     * always gets Praetorian.
-     */
-    private String getBossForTierAndTheme(CometTier tier, int theme) {
-        String baseBoss;
-
-        // Theme-specific boss overrides
-        if (theme == THEME_TRORK) {
-            // Trork theme always uses Trork_Chieftain
-            baseBoss = THEME_TRORK_BOSS;
-        } else if (theme == THEME_SPIDER) {
-            // Spider theme always uses Spider_Broodmother
-            baseBoss = THEME_SPIDER_BOSS;
-        } else if (theme == THEME_SKELETON_BURNT) {
-            // Skeleton Burnt theme always uses Skeleton_Burnt_Praetorian
-            baseBoss = THEME_SKELETON_BURNT_BOSS;
-        } else if (theme == THEME_VOID) {
-            // Epic Void: Shadow_Knight; Uncommon/Rare: Spawn_Void
-            if (tier == CometTier.EPIC)
-                return applyTierSuffix("Shadow_Knight", tier);
-            return applyTierSuffix(THEME_VOID_BOSS, tier);
-        } else if (theme == THEME_OUTLANDER) {
-            baseBoss = RANDOM.nextBoolean() ? "Werewolf" : "Yeti";
-            return applyTierSuffix(baseBoss, tier);
-        } else if (theme == THEME_ICE) {
-            baseBoss = "Spirit_Frost";
-            return applyTierSuffix(baseBoss, tier);
-        } else if (theme == THEME_BURNT_LEGENDARY) {
-            baseBoss = "Skeleton_Burnt_Praetorian";
-            return applyTierSuffix(baseBoss, tier);
-        } else if (theme == THEME_LAVA) {
-            baseBoss = "Toad_Rhino_Magma";
-            return applyTierSuffix(baseBoss, tier);
-        } else if (theme == THEME_EARTH) {
-            baseBoss = "Hedera";
-            return applyTierSuffix(baseBoss, tier);
-        } else if (theme == THEME_UNDEAD_RARE) {
-            baseBoss = "Golem_Crystal_Thunder";
-            return applyTierSuffix(baseBoss, tier);
-        } else if (theme == THEME_UNDEAD_LEGENDARY) {
-            baseBoss = "Wraith";
-            return applyTierSuffix(baseBoss, tier);
-        } else if (theme == THEME_ZOMBIE) {
-            baseBoss = "Zombie_Aberrant";
-            return applyTierSuffix(baseBoss, tier);
-        } else {
-            // Other themes use tier-appropriate boss pool
-            int themeNativeTier = THEME_NATIVE_TIER[theme];
-            if (themeNativeTier == 1) {
-                // Tier 1 native themes use Tier 1 boss pool
-                baseBoss = TIER1_BOSSES_BASE[RANDOM.nextInt(TIER1_BOSSES_BASE.length)];
-            } else if (themeNativeTier == 2) {
-                // Tier 2 native themes (non-Trork) use Tier 2 boss pool
-                baseBoss = TIER2_BOSSES_BASE[RANDOM.nextInt(TIER2_BOSSES_BASE.length)];
-            } else if (themeNativeTier == 3) {
-                // Tier 3 native themes use Werewolf
-                baseBoss = TIER3_BOSS_BASE;
-            } else {
-                // Tier 4 native themes (non-Skeleton Burnt) use Tier 4 boss pool
-                baseBoss = TIER4_BOSSES_BASE[RANDOM.nextInt(TIER4_BOSSES_BASE.length)];
-            }
-        }
-
-        // Apply the comet's tier suffix (boss scales to comet tier, not theme's native
-        // tier)
-        return applyTierSuffix(baseBoss, tier);
-    }
-
-    /**
-     * Get all boss NPC types for this tier and theme. Most themes return 1;
-     * Legendary Outlander returns 2 (Werewolf + Yeti).
-     */
-    private java.util.List<String> getBosses(CometTier tier, int theme) {
-        if (theme == THEME_OUTLANDER && tier == CometTier.LEGENDARY) {
-            return java.util.Arrays.asList(applyTierSuffix("Werewolf", tier), applyTierSuffix("Yeti", tier));
-        }
-        return java.util.Collections.singletonList(getBossForTierAndTheme(tier, theme));
     }
 
     public void updateWaveCountdown(Store<EntityStore> store, Ref<EntityStore> playerRef, WaveData waveData) {
@@ -1503,6 +1001,7 @@ public class CometWaveManager {
         CometTier tier = cometTiers.getOrDefault(blockPos, CometTier.UNCOMMON);
         String themeId = cometThemes.get(blockPos);
         if (themeId == null) themeId = "skeleton";
+        int zoneLevel = Math.max(0, cometZones.getOrDefault(blockPos, 0));
 
         // Get mob list for this wave
         String[] mobList = WaveThemeProvider.getMobListForWave(tier, themeId, waveIndex);
@@ -1596,7 +1095,7 @@ public class CometWaveManager {
 
             Vector3f rotation = new Vector3f(0.0f, (float) (angle + Math.PI), 0.0f);
             Pair<Ref<EntityStore>, com.hypixel.hytale.server.core.universe.world.npc.INonPlayerCharacter> result =
-                    spawnCometNPC(store, npcPlugin, npcType, npcType, toSpawn, rotation, themeId, tier, false);
+                    spawnCometNPC(store, npcPlugin, npcType, npcType, toSpawn, rotation, themeId, tier, zoneLevel, false);
 
             if (result != null && result.first() != null) {
                 waveData.spawnedMobs.add(result.first());
@@ -1614,7 +1113,7 @@ public class CometWaveManager {
                         new Vector3d(base.x + dx, base.y, base.z + dz), 11);
                 if (retryPos != null) {
                     Pair<Ref<EntityStore>, com.hypixel.hytale.server.core.universe.world.npc.INonPlayerCharacter> res =
-                            spawnCometNPC(store, npcPlugin, f.npcType, f.npcType, retryPos, f.rotation, themeId, tier, false);
+                            spawnCometNPC(store, npcPlugin, f.npcType, f.npcType, retryPos, f.rotation, themeId, tier, zoneLevel, false);
                     if (res != null && res.first() != null) {
                         waveData.spawnedMobs.add(res.first());
                         successPositions.add(retryPos);
@@ -1647,17 +1146,14 @@ public class CometWaveManager {
         CometTier tier = cometTiers.getOrDefault(blockPos, CometTier.UNCOMMON);
         String themeId = cometThemes.get(blockPos);
         if (themeId == null) themeId = "skeleton";
+        int zoneLevel = Math.max(0, cometZones.getOrDefault(blockPos, 0));
 
         // Get bosses for this specific wave
         java.util.List<String> bosses = WaveThemeProvider.getBossesForWave(tier, themeId, waveIndex);
         if (bosses == null || bosses.isEmpty()) {
-            // Fallback to legacy
-            int legacyTheme = getLegacyThemeIndex(themeId);
-            if (legacyTheme >= 0) {
-                bosses = getBossesLegacy(tier, legacyTheme);
-            } else {
-                bosses = java.util.Collections.singletonList(applyTierSuffix("Bear_Polar", tier));
-            }
+            LOGGER.warning("No bosses configured for theme '" + themeId + "' wave index " + waveIndex
+                    + " at tier " + tier.getName());
+            return;
         }
 
         LOGGER.info("Spawning " + bosses.size() + " boss(es) for wave " + waveData.currentWave);
@@ -1694,7 +1190,7 @@ public class CometWaveManager {
             }
 
             Pair<Ref<EntityStore>, com.hypixel.hytale.server.core.universe.world.npc.INonPlayerCharacter> result =
-                    spawnCometNPC(store, npcPlugin, bossType, bossType, toSpawn, rotation, themeId, tier, true);
+                    spawnCometNPC(store, npcPlugin, bossType, bossType, toSpawn, rotation, themeId, tier, zoneLevel, true);
 
             if (result != null && result.first() != null) {
                 waveData.spawnedMobs.add(result.first());
@@ -1712,7 +1208,7 @@ public class CometWaveManager {
                         new Vector3d(base.x + dx, base.y, base.z + dz), 11);
                 if (retryPos != null) {
                     Pair<Ref<EntityStore>, com.hypixel.hytale.server.core.universe.world.npc.INonPlayerCharacter> res =
-                            spawnCometNPC(store, npcPlugin, bossType, bossType, retryPos, rotation, themeId, tier, true);
+                            spawnCometNPC(store, npcPlugin, bossType, bossType, retryPos, rotation, themeId, tier, zoneLevel, true);
                     if (res != null && res.first() != null) {
                         waveData.spawnedMobs.add(res.first());
                         successPositions.add(retryPos);
@@ -1728,142 +1224,6 @@ public class CometWaveManager {
         // Start tracking and force immediate title update
         waveData.lastTimerUpdate = 0;
         updateWaveCountdown(store, playerRef, waveData);
-    }
-
-    /**
-     * Spawn boss wave (Wave 2) after normal wave completes
-     * @deprecated Use spawnNextWave or spawnBossWaveAtIndex instead
-     */
-    private void spawnBossWave(Store<EntityStore> store, Ref<EntityStore> playerRef, WaveData waveData) {
-        LOGGER.info("=== SPAWNING BOSS WAVE ===");
-        NPCPlugin npcPlugin = NPCPlugin.get();
-        if (npcPlugin == null) {
-            LOGGER.severe("NPCPlugin not available for boss wave!");
-            return;
-        }
-
-        Vector3i blockPos = waveData.blockPos;
-        CometTier tier = cometTiers.getOrDefault(blockPos, CometTier.UNCOMMON);
-        String themeId = cometThemes.get(blockPos);
-        if (themeId == null)
-            themeId = "skeleton"; // Default fallback
-        LOGGER.info("Boss wave for tier: " + tier.getName() + " theme: " + themeId + " at " + blockPos);
-
-        // Clear Wave 1 mobs from list
-        waveData.spawnedMobs.clear();
-        LOGGER.info("Cleared Wave 1 mobs, list size: " + waveData.spawnedMobs.size());
-
-        // Update to Wave 2
-        waveData.currentWave = 2;
-        waveData.startTime = System.currentTimeMillis(); // Reset timer for boss wave
-        waveData.lastTimerUpdate = waveData.startTime;
-
-        // Get bosses from config, with legacy fallback
-        java.util.List<String> bosses = WaveThemeProvider.getBossesForTheme(tier, themeId);
-        if (bosses == null || bosses.isEmpty()) {
-            int legacyTheme = getLegacyThemeIndex(themeId);
-            if (legacyTheme >= 0) {
-                bosses = getBossesLegacy(tier, legacyTheme);
-            } else {
-                bosses = java.util.Collections.singletonList(applyTierSuffix("Bear_Polar", tier));
-            }
-        }
-        waveData.previousRemainingCount = bosses.size();
-        waveData.initialSpawnCount = 0;
-
-        com.hypixel.hytale.server.core.universe.world.World world = null;
-        try {
-            world = ((com.hypixel.hytale.server.core.universe.world.storage.EntityStore) store.getExternalData())
-                    .getWorld();
-        } catch (Exception e) {
-            LOGGER.warning("Could not get World for boss spawn validation: " + e.getMessage());
-        }
-
-        Vector3d centerPos = new Vector3d(blockPos.x + 0.5, blockPos.y + 1, blockPos.z + 0.5);
-        Vector3f rotation = new Vector3f(0.0f, 0.0f, 0.0f);
-        int spawned = 0;
-        List<Vector3d> successPositions = new ArrayList<>();
-        List<String> failedBosses = new ArrayList<>();
-        for (int b = 0; b < bosses.size(); b++) {
-            String bossType = bosses.get(b);
-            double ox = (bosses.size() > 1 && b == 1) ? 1.5 : 0;
-            Vector3d pos = new Vector3d(centerPos.x + ox, centerPos.y, centerPos.z);
-            Vector3d toSpawn = pos;
-            if (world != null) {
-                Vector3d v = CometSpawnUtil.findValidMobSpawn(world, pos, 11);
-                if (v != null)
-                    toSpawn = v;
-                else {
-                    failedBosses.add(bossType);
-                    LOGGER.info("No valid boss spawn at " + pos + ", will retry near success: " + bossType);
-                    continue;
-                }
-            }
-            // Boss IDs are base IDs without tier suffixes
-            Pair<Ref<EntityStore>, com.hypixel.hytale.server.core.universe.world.npc.INonPlayerCharacter> result = spawnCometNPC(
-                    store, npcPlugin, bossType, bossType, toSpawn, rotation, themeId, tier, true);
-            if (result != null && result.first() != null) {
-                waveData.spawnedMobs.add(result.first());
-                successPositions.add(toSpawn);
-                spawned++;
-                LOGGER.info("Spawned boss " + bossType + " at " + toSpawn);
-            } else {
-                LOGGER.warning("Failed to spawn boss: " + bossType);
-            }
-        }
-        // Retry failed bosses near a successful one
-        if (!failedBosses.isEmpty() && !successPositions.isEmpty() && world != null) {
-            for (String bossType : failedBosses) {
-                Vector3d base = successPositions.get(RANDOM.nextInt(successPositions.size()));
-                double dx = (RANDOM.nextBoolean() ? 1 : -1) * (0.5 + RANDOM.nextDouble());
-                double dz = (RANDOM.nextBoolean() ? 1 : -1) * (0.5 + RANDOM.nextDouble());
-                Vector3d newPref = new Vector3d(base.x + dx, base.y, base.z + dz);
-                Vector3d retryPos = CometSpawnUtil.findValidMobSpawn(world, newPref, 11);
-                if (retryPos != null) {
-                    // Boss IDs are base IDs without tier suffixes
-                    Pair<Ref<EntityStore>, com.hypixel.hytale.server.core.universe.world.npc.INonPlayerCharacter> res = spawnCometNPC(
-                            store, npcPlugin, bossType, bossType, retryPos, rotation, themeId, tier, true);
-                    if (res != null && res.first() != null) {
-                        waveData.spawnedMobs.add(res.first());
-                        successPositions.add(retryPos);
-                        spawned++;
-                        LOGGER.info("Spawned boss " + bossType + " at " + retryPos + " (retry near success)");
-                    }
-                }
-            }
-        }
-        waveData.initialSpawnCount = spawned;
-
-        if (spawned > 0) {
-            // Always schedule countdown so boss death can trigger completion even if player
-            // is dead
-            try {
-                com.hypixel.hytale.server.core.universe.world.World worldForRun = ((com.hypixel.hytale.server.core.universe.world.storage.EntityStore) store
-                        .getExternalData()).getWorld();
-                final Store<EntityStore> finalStore = store;
-                final Ref<EntityStore> finalPlayerRef = playerRef;
-                final WaveData finalWaveData = waveData;
-                com.hypixel.hytale.server.core.HytaleServer.SCHEDULED_EXECUTOR.schedule(() -> {
-                    try {
-                        worldForRun.execute(() -> {
-                            finalWaveData.lastTimerUpdate = 0;
-                            updateWaveCountdown(finalStore, finalPlayerRef, finalWaveData);
-                        });
-                    } catch (Exception e) {
-                        LOGGER.warning("Error updating boss wave UI: " + e.getMessage());
-                    }
-                }, 100L, java.util.concurrent.TimeUnit.MILLISECONDS);
-            } catch (Exception e) {
-                LOGGER.warning("Error scheduling boss wave UI update: " + e.getMessage());
-            }
-        } else {
-            // No bosses spawned – complete immediately (playerRef can be null if player
-            // dead)
-            PlayerRef pr = (playerRef != null && playerRef.isValid())
-                    ? store.getComponent(playerRef, PlayerRef.getComponentType())
-                    : null;
-            completeWave(store, pr, waveData);
-        }
     }
 
     /**
@@ -1939,222 +1299,12 @@ public class CometWaveManager {
 
     /**
      * Generate structured rewards for a tier using config settings.
-     * Checks for theme-specific reward overrides first, then falls back to global tier rewards.
+     * Combines zone base pools with tier inheritance and optional theme overrides.
      */
-    private void generateTierRewards(CometTier tier, String themeId,
+    private void generateTierRewards(CometTier tier, String themeId, int zoneId,
             java.util.List<com.hypixel.hytale.server.core.inventory.ItemStack> allItems,
             java.util.List<String> droppedItemIds) {
-        rewardService.generateTierRewards(tier, themeId, RANDOM, allItems, droppedItemIds, LOGGER);
-    }
-
-    /**
-     * Legacy generateTierRewardsHardcoded - kept for reference only
-     * This code is no longer used - rewards are now loaded from config
-     */
-    private void generateTierRewardsLegacy(CometTier tier,
-            java.util.List<com.hypixel.hytale.server.core.inventory.ItemStack> allItems,
-            java.util.List<String> droppedItemIds) {
-        if (tier == CometTier.UNCOMMON) {
-            // Tier 1: Copper Ingots (5-7), Light Leather (2-3), Lesser Health Potion (1-2),
-            // Bombs (3-4), Poison Bomb (1)
-            int copperCount = 5 + RANDOM.nextInt(3); // 5-7
-            allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack("Ingredient_Bar_Copper", copperCount));
-            droppedItemIds.add("Copper Ingots x" + copperCount);
-
-            int leatherCount = 2 + RANDOM.nextInt(2); // 2-3
-            allItems.add(
-                    new com.hypixel.hytale.server.core.inventory.ItemStack("Ingredient_Leather_Light", leatherCount));
-            droppedItemIds.add("Light Leather x" + leatherCount);
-
-            int potionCount = 1 + RANDOM.nextInt(2); // 1-2
-            allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack("Potion_Health_Lesser", potionCount));
-            droppedItemIds.add("Lesser Health Potion x" + potionCount);
-
-            int bombCount = 3 + RANDOM.nextInt(2); // 3-4
-            allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack("Weapon_Bomb", bombCount));
-            droppedItemIds.add("Bombs x" + bombCount);
-
-            allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack("Weapon_Bomb_Potion_Poison", 1));
-            droppedItemIds.add("Poison Potion Bomb x1");
-
-        } else if (tier == CometTier.RARE) {
-            // Tier 2: Iron Ingots (5-7), Medium Leather (2-3), Potion of Health (1-2),
-            // Essence of Fire (3-4), Shadoweave Scraps (5), Bombs (4-5), Poison Bomb (1-2)
-            // Bonus: Copper Ingots (2-4, 35% chance), Lesser Health Potion (1, 35% chance)
-
-            int ironCount = 5 + RANDOM.nextInt(3); // 5-7
-            allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack("Ingredient_Bar_Iron", ironCount));
-            droppedItemIds.add("Iron Ingots x" + ironCount);
-
-            if (RANDOM.nextDouble() < BONUS_DROP_CHANCE_TIER2) {
-                int copperCount = 2 + RANDOM.nextInt(3); // 2-4
-                allItems.add(
-                        new com.hypixel.hytale.server.core.inventory.ItemStack("Ingredient_Bar_Copper", copperCount));
-                droppedItemIds.add("Copper Ingots x" + copperCount + " (bonus)");
-            }
-
-            int leatherCount = 2 + RANDOM.nextInt(2); // 2-3
-            allItems.add(
-                    new com.hypixel.hytale.server.core.inventory.ItemStack("Ingredient_Leather_Medium", leatherCount));
-            droppedItemIds.add("Medium Leather x" + leatherCount);
-
-            int potionCount = 1 + RANDOM.nextInt(2); // 1-2
-            allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack("Potion_Health", potionCount));
-            droppedItemIds.add("Potion of Health x" + potionCount);
-
-            if (RANDOM.nextDouble() < BONUS_DROP_CHANCE_TIER2) {
-                allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack("Potion_Health_Lesser", 1));
-                droppedItemIds.add("Lesser Health Potion x1 (bonus)");
-            }
-
-            int essenceCount = 3 + RANDOM.nextInt(2); // 3-4
-            allItems.add(
-                    new com.hypixel.hytale.server.core.inventory.ItemStack("Ingredient_Fire_Essence", essenceCount));
-            droppedItemIds.add("Essence of Fire x" + essenceCount);
-
-            allItems.add(
-                    new com.hypixel.hytale.server.core.inventory.ItemStack("Ingredient_Fabric_Scrap_Shadoweave", 5));
-            droppedItemIds.add("Shadoweave Scraps x5");
-
-            int bombCount = 4 + RANDOM.nextInt(2); // 4-5
-            allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack("Weapon_Bomb", bombCount));
-            droppedItemIds.add("Bombs x" + bombCount);
-
-            int poisonBombCount = 1 + RANDOM.nextInt(2); // 1-2
-            allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack("Weapon_Bomb_Potion_Poison",
-                    poisonBombCount));
-            droppedItemIds.add("Poison Potion Bombs x" + poisonBombCount);
-
-        } else if (tier == CometTier.EPIC) {
-            // Tier 3: Cobalt/Thorium Ingots (5-7), Heavy Leather (2-3), Greater Health
-            // Potion (1-2),
-            // Essence of Fire (3-4), Shadoweave Scraps (5), Bombs (5-6), Poison Bomb (2-3)
-            // Bonus: Copper (2-4, 30%), Iron (2-4, 30%), Lesser Health (1, 30%), Potion of
-            // Health (1, 30%)
-
-            // Randomly select Cobalt or Thorium
-            String tier3Ore = (RANDOM.nextBoolean()) ? "Ingredient_Bar_Cobalt" : "Ingredient_Bar_Thorium";
-            String oreName = tier3Ore.contains("Cobalt") ? "Cobalt" : "Thorium";
-            int oreCount = 5 + RANDOM.nextInt(3); // 5-7
-            allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack(tier3Ore, oreCount));
-            droppedItemIds.add(oreName + " Ingots x" + oreCount);
-
-            if (RANDOM.nextDouble() < BONUS_DROP_CHANCE_TIER3) {
-                int copperCount = 2 + RANDOM.nextInt(3); // 2-4
-                allItems.add(
-                        new com.hypixel.hytale.server.core.inventory.ItemStack("Ingredient_Bar_Copper", copperCount));
-                droppedItemIds.add("Copper Ingots x" + copperCount + " (bonus)");
-            }
-
-            if (RANDOM.nextDouble() < BONUS_DROP_CHANCE_TIER3) {
-                int ironCount = 2 + RANDOM.nextInt(3); // 2-4
-                allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack("Ingredient_Bar_Iron", ironCount));
-                droppedItemIds.add("Iron Ingots x" + ironCount + " (bonus)");
-            }
-
-            int leatherCount = 2 + RANDOM.nextInt(2); // 2-3
-            allItems.add(
-                    new com.hypixel.hytale.server.core.inventory.ItemStack("Ingredient_Leather_Heavy", leatherCount));
-            droppedItemIds.add("Heavy Leather x" + leatherCount);
-
-            int potionCount = 1 + RANDOM.nextInt(2); // 1-2
-            allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack("Potion_Health_Greater", potionCount));
-            droppedItemIds.add("Greater Health Potion x" + potionCount);
-
-            if (RANDOM.nextDouble() < BONUS_DROP_CHANCE_TIER3) {
-                allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack("Potion_Health_Lesser", 1));
-                droppedItemIds.add("Lesser Health Potion x1 (bonus)");
-            }
-
-            if (RANDOM.nextDouble() < BONUS_DROP_CHANCE_TIER3) {
-                allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack("Potion_Health", 1));
-                droppedItemIds.add("Potion of Health x1 (bonus)");
-            }
-
-            int essenceCount = 3 + RANDOM.nextInt(2); // 3-4
-            allItems.add(
-                    new com.hypixel.hytale.server.core.inventory.ItemStack("Ingredient_Fire_Essence", essenceCount));
-            droppedItemIds.add("Essence of Fire x" + essenceCount);
-
-            allItems.add(
-                    new com.hypixel.hytale.server.core.inventory.ItemStack("Ingredient_Fabric_Scrap_Shadoweave", 5));
-            droppedItemIds.add("Shadoweave Scraps x5");
-
-            int bombCount = 5 + RANDOM.nextInt(2); // 5-6
-            allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack("Weapon_Bomb", bombCount));
-            droppedItemIds.add("Bombs x" + bombCount);
-
-            int poisonBombCount = 2 + RANDOM.nextInt(2); // 2-3
-            allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack("Weapon_Bomb_Potion_Poison",
-                    poisonBombCount));
-            droppedItemIds.add("Poison Potion Bombs x" + poisonBombCount);
-
-        } else { // LEGENDARY
-            // Tier 4: Adamantite Ingots (5-7), Heavy Leather (2-3), Large Potion of Health
-            // (1-2),
-            // Bombs (6-8), Poison Bomb (3-4)
-            // Bonus: Copper (2-4, 25%), Iron (2-4, 25%), Cobalt/Thorium (2-4, 25%),
-            // Lesser Health (1, 25%), Potion of Health (1, 25%), Greater Health (1, 25%)
-
-            int adamantiteCount = 5 + RANDOM.nextInt(3); // 5-7
-            allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack("Ingredient_Bar_Adamantite",
-                    adamantiteCount));
-            droppedItemIds.add("Adamantite Ingots x" + adamantiteCount);
-
-            if (RANDOM.nextDouble() < BONUS_DROP_CHANCE_TIER4) {
-                int copperCount = 2 + RANDOM.nextInt(3); // 2-4
-                allItems.add(
-                        new com.hypixel.hytale.server.core.inventory.ItemStack("Ingredient_Bar_Copper", copperCount));
-                droppedItemIds.add("Copper Ingots x" + copperCount + " (bonus)");
-            }
-
-            if (RANDOM.nextDouble() < BONUS_DROP_CHANCE_TIER4) {
-                int ironCount = 2 + RANDOM.nextInt(3); // 2-4
-                allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack("Ingredient_Bar_Iron", ironCount));
-                droppedItemIds.add("Iron Ingots x" + ironCount + " (bonus)");
-            }
-
-            if (RANDOM.nextDouble() < BONUS_DROP_CHANCE_TIER4) {
-                String tier3Ore = (RANDOM.nextBoolean()) ? "Ingredient_Bar_Cobalt" : "Ingredient_Bar_Thorium";
-                String oreName = tier3Ore.contains("Cobalt") ? "Cobalt" : "Thorium";
-                int oreCount = 2 + RANDOM.nextInt(3); // 2-4
-                allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack(tier3Ore, oreCount));
-                droppedItemIds.add(oreName + " Ingots x" + oreCount + " (bonus)");
-            }
-
-            int leatherCount = 2 + RANDOM.nextInt(2); // 2-3
-            allItems.add(
-                    new com.hypixel.hytale.server.core.inventory.ItemStack("Ingredient_Leather_Heavy", leatherCount));
-            droppedItemIds.add("Heavy Leather x" + leatherCount);
-
-            int potionCount = 1 + RANDOM.nextInt(2); // 1-2
-            allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack("Potion_Health_Large", potionCount));
-            droppedItemIds.add("Large Potion of Health x" + potionCount);
-
-            if (RANDOM.nextDouble() < BONUS_DROP_CHANCE_TIER4) {
-                allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack("Potion_Health_Lesser", 1));
-                droppedItemIds.add("Lesser Health Potion x1 (bonus)");
-            }
-
-            if (RANDOM.nextDouble() < BONUS_DROP_CHANCE_TIER4) {
-                allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack("Potion_Health", 1));
-                droppedItemIds.add("Potion of Health x1 (bonus)");
-            }
-
-            if (RANDOM.nextDouble() < BONUS_DROP_CHANCE_TIER4) {
-                allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack("Potion_Health_Greater", 1));
-                droppedItemIds.add("Greater Health Potion x1 (bonus)");
-            }
-
-            int bombCount = 6 + RANDOM.nextInt(3); // 6-8
-            allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack("Weapon_Bomb", bombCount));
-            droppedItemIds.add("Bombs x" + bombCount);
-
-            int poisonBombCount = 3 + RANDOM.nextInt(2); // 3-4
-            allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack("Weapon_Bomb_Potion_Poison",
-                    poisonBombCount));
-            droppedItemIds.add("Poison Potion Bombs x" + poisonBombCount);
-        }
+        rewardService.generateTierRewards(tier, themeId, zoneId, RANDOM, allItems, droppedItemIds, LOGGER);
     }
 
     /**
@@ -2174,9 +1324,14 @@ public class CometWaveManager {
             // Get theme ID for potential reward override
             String themeId = cometThemes.get(blockPos);
 
-            // Generate structured rewards based on tier (see REWARD_SYSTEM.md)
-            // Checks for theme-specific reward override first
-            generateTierRewards(tier, themeId, allItems, droppedItemIds);
+            // Determine zone for this comet, if known
+            Integer zoneId = cometZones.get(blockPos);
+            if (zoneId == null) {
+                zoneId = 0;
+            }
+
+            // Generate structured rewards based on zone + tier (see REWARD_SYSTEM.md)
+            generateTierRewards(tier, themeId, zoneId, allItems, droppedItemIds);
 
             // Add guaranteed 5 Shards (all tiers)
             String shardId = tier.getShardId();
@@ -2187,7 +1342,7 @@ public class CometWaveManager {
             boolean chestSpawned = CometLootChestService.getInstance().spawnRewardChest(world, blockPos, allItems);
             if (chestSpawned) {
                 LOGGER.info("[CometWaveManager] Spawned timed reward chest at " + blockPos +
-                        " with " + allItems.size() + " item stacks (expires 20s after last touch).");
+                        " with " + allItems.size() + " item stacks (expires 20s after close).");
             } else {
                 // Fallback path: drop entities directly and break the block.
                 com.hypixel.hytale.math.vector.Vector3d dropPosition = new com.hypixel.hytale.math.vector.Vector3d(
@@ -2253,55 +1408,15 @@ public class CometWaveManager {
             CometTier tier, java.util.UUID ownerUUID) {
         waveState.registerCometTier(blockPos, tier, ownerUUID, LOGGER);
 
-        // Always-visible debug for spawn + beam math (used by all spawn paths, including /comet test).
-        try {
-            String beamSystem = tier.getBeamParticleSystem();
-            double blockParticleOffsetY = 0.5;
-            double systemSpawnerOffsetY = -1.0;
-            double beamScaleY = 999.0;
-            double beamCenterY = blockPos.y + blockParticleOffsetY + systemSpawnerOffsetY;
-            double beamStartY = beamCenterY - (beamScaleY / 2.0);
-            double beamEndY = beamCenterY + (beamScaleY / 2.0);
-            String beamSystemPath = "Server/Particles/" + beamSystem + "/" + beamSystem + ".particlesystem";
-
-            String worldName = world != null ? world.getName() : "unknown";
-            String blockTypeId = "null";
-            if (world != null) {
-                com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType blockType = world
-                        .getBlockType(blockPos.x, blockPos.y, blockPos.z);
-                if (blockType != null && blockType.getId() != null) {
-                    blockTypeId = blockType.getId();
-                }
-            }
-
-            LOGGER.warning("[DEBUG-COMET-SPAWN] world=" + worldName +
-                    " blockType=" + blockTypeId +
-                    " tier=" + tier.getName() +
-                    " pos=" + blockPos +
-                    " owner=" + ownerUUID);
-            LOGGER.warning("[DEBUG-BEAM-SPAWN] systemId=" + beamSystem +
-                    " beamStartY=" + beamStartY +
-                    " beamCenterY=" + beamCenterY +
-                    " beamEndY=" + beamEndY +
-                    " systemPath=" + beamSystemPath);
-        } catch (Exception e) {
-            LOGGER.warning("[DEBUG-BEAM-SPAWN] Failed to print beam debug for " + blockPos + ": " + e.getMessage());
-        }
-
         // Add map marker for this comet to the specific player only
         addCometMapMarker(world, blockPos, tier, ownerUUID);
     }
 
     /**
-     * Register tier for a comet block without owner (legacy/fallback - visible to
-     * all)
-     * 
-     * @deprecated Use registerCometTier with ownerUUID instead
+     * Register the originating zone ID for a comet block.
      */
-    @Deprecated
-    public void registerCometTier(com.hypixel.hytale.server.core.universe.world.World world, Vector3i blockPos,
-            CometTier tier) {
-        registerCometTier(world, blockPos, tier, null);
+    public void registerCometZone(Vector3i blockPos, int zoneId) {
+        waveState.registerCometZone(blockPos, zoneId);
     }
 
     /**
@@ -2316,19 +1431,6 @@ public class CometWaveManager {
     private void addCometMapMarker(com.hypixel.hytale.server.core.universe.world.World world, Vector3i blockPos,
             CometTier tier, java.util.UUID ownerUUID) {
         waveUiService.addCometMapMarker(world, blockPos, tier, ownerUUID, LOGGER);
-    }
-
-    /**
-     * Send a marker only to the owner player via UpdateWorldMap packet
-     * 
-     * @param world     The world
-     * @param marker    The marker to send
-     * @param ownerUUID The UUID of the owner player (null = send to all players)
-     */
-    private void sendMarkerToOwner(com.hypixel.hytale.server.core.universe.world.World world,
-            com.hypixel.hytale.protocol.packets.worldmap.MapMarker marker,
-            java.util.UUID ownerUUID) {
-        // Kept for source compatibility during service migration.
     }
 
     /**
@@ -2381,19 +1483,6 @@ public class CometWaveManager {
     }
 
     /**
-     * Set a forced theme for a specific comet block (legacy int-based, for
-     * backwards compatibility)
-     * 
-     * @param blockPos   The block position
-     * @param themeIndex The legacy theme index
-     */
-    public void forceThemeLegacy(Vector3i blockPos, int themeIndex) {
-        String themeId = getLegacyThemeId(themeIndex);
-        waveState.forceTheme(blockPos, themeId, LOGGER);
-        LOGGER.info("Forced legacy theme " + themeIndex + " (" + themeId + ") for comet at " + blockPos);
-    }
-
-    /**
      * Get theme ID from name (case insensitive) - now returns string
      * 
      * @param name Theme name
@@ -2404,48 +1493,10 @@ public class CometWaveManager {
     }
 
     /**
-     * Get legacy theme ID from name (for backwards compatibility with
-     * CometSpawnCommand)
-     * 
-     * @param name Theme name
-     * @return Theme ID (int), or -1 if not found
-     */
-    public int getThemeId(String name) {
-        String themeId = WaveThemeProvider.findThemeByName(name);
-        if (themeId != null) {
-            return getLegacyThemeIndex(themeId);
-        }
-
-        // Fallback to legacy lookup
-        if (name == null || name.isEmpty())
-            return -1;
-
-        for (int i = 0; i < THEME_NAMES.length; i++) {
-            if (THEME_NAMES[i].equalsIgnoreCase(name)) {
-                return i;
-            }
-        }
-
-        for (int i = 0; i < THEME_NAMES.length; i++) {
-            if (THEME_NAMES[i].toLowerCase().contains(name.toLowerCase())) {
-                return i;
-            }
-        }
-
-        return -1;
-    }
-
-    /**
-     * Get all valid theme names (from config if available, else legacy)
-     * 
-     * @return Array of theme names
+     * Get all valid configured theme names.
      */
     public String[] getThemeNames() {
-        String[] configNames = WaveThemeProvider.getAllThemeNames();
-        if (configNames != null && configNames.length > 0) {
-            return configNames;
-        }
-        return THEME_NAMES;
+        return WaveThemeProvider.getAllThemeNames();
     }
 
     public void handleMobDeath(
@@ -2497,88 +1548,4 @@ public class CometWaveManager {
         cometThemes.clear();
     }
 
-    // ========== LEGACY FALLBACK METHODS ==========
-    // These methods provide backwards compatibility when config is not available
-
-    /**
-     * Convert legacy integer theme index to string theme ID
-     */
-    private String getLegacyThemeId(int legacyIndex) {
-        String[] legacyIds = {
-                "skeleton", "goblin", "spider", "trork", "skeleton_sand", "sabertooth",
-                "outlander", "leopard", "toad", "skeleton_burnt", "void", "ice",
-                "burnt_legendary", "lava", "earth", "undead_rare", "undead_legendary", "zombie"
-        };
-        if (legacyIndex >= 0 && legacyIndex < legacyIds.length) {
-            return legacyIds[legacyIndex];
-        }
-        return "skeleton"; // Default fallback
-    }
-
-    /**
-     * Convert string theme ID to legacy integer index
-     */
-    private int getLegacyThemeIndex(String themeId) {
-        if (themeId == null)
-            return 0;
-        String[] legacyIds = {
-                "skeleton", "goblin", "spider", "trork", "skeleton_sand", "sabertooth",
-                "outlander", "leopard", "toad", "skeleton_burnt", "void", "ice",
-                "burnt_legendary", "lava", "earth", "undead_rare", "undead_legendary", "zombie"
-        };
-        for (int i = 0; i < legacyIds.length; i++) {
-            if (legacyIds[i].equals(themeId)) {
-                return i;
-            }
-        }
-        return -1; // Not found
-    }
-
-    /**
-     * Legacy theme selection (fallback when config fails)
-     */
-    private int selectThemeLegacy(CometTier tier) {
-        List<Integer> availableThemes = new ArrayList<>();
-        int cometTierNum = getTierIndex(tier) + 1;
-
-        for (int theme = 0; theme < THEME_NATIVE_TIER.length; theme++) {
-            int themeNativeTier = THEME_NATIVE_TIER[theme];
-            if (theme == THEME_VOID) {
-                if (cometTierNum < 4)
-                    availableThemes.add(theme);
-            } else if (Math.abs(themeNativeTier - cometTierNum) <= 1) {
-                availableThemes.add(theme);
-            }
-        }
-
-        if (availableThemes.isEmpty()) {
-            return THEME_SKELETON;
-        }
-        return availableThemes.get(RANDOM.nextInt(availableThemes.size()));
-    }
-
-    /**
-     * Legacy mob list (fallback when config fails)
-     */
-    private String[] getMobListForThemeLegacy(CometTier tier, int theme) {
-        String[] baseMobs = getBaseMobsForTheme(theme, tier);
-        if (baseMobs == null) {
-            return null;
-        }
-        String[] tieredMobs = new String[baseMobs.length];
-        for (int i = 0; i < baseMobs.length; i++) {
-            tieredMobs[i] = applyTierSuffix(baseMobs[i], tier);
-        }
-        return tieredMobs;
-    }
-
-    /**
-     * Legacy boss list (fallback when config fails)
-     */
-    private java.util.List<String> getBossesLegacy(CometTier tier, int theme) {
-        if (theme == THEME_OUTLANDER && tier == CometTier.LEGENDARY) {
-            return java.util.Arrays.asList(applyTierSuffix("Werewolf", tier), applyTierSuffix("Yeti", tier));
-        }
-        return java.util.Collections.singletonList(getBossForTierAndTheme(tier, theme));
-    }
 }

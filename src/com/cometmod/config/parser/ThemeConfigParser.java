@@ -17,10 +17,12 @@ import com.cometmod.config.model.BossEntry;
 import com.cometmod.config.model.MobEntry;
 import com.cometmod.config.model.RewardEntry;
 import com.cometmod.config.model.ThemeConfig;
+import com.cometmod.config.model.TierStatScalingConfig;
 import com.cometmod.config.model.TierRewards;
 import com.cometmod.config.model.TierSettings;
 import com.cometmod.config.model.WaveEntry;
 import com.cometmod.config.model.ZoneSpawnChances;
+import com.cometmod.config.model.TierInheritanceWeights;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -54,7 +56,6 @@ public class ThemeConfigParser {
             // Find the "themes" object
             String themesBlock = extractJsonObject(json, "themes");
             if (themesBlock == null || themesBlock.isEmpty()) {
-                LOGGER.info("No themes block found in config, using defaults");
                 return DefaultThemes.generateDefaults();
             }
 
@@ -72,7 +73,6 @@ public class ThemeConfigParser {
                     ThemeConfig theme = parseTheme(themeId, themeJson);
                     if (theme != null) {
                         themes.put(themeId, theme);
-                        LOGGER.info("Parsed theme: " + themeId + " - " + theme.getDisplayName());
                     }
                 }
             }
@@ -109,16 +109,9 @@ public class ThemeConfigParser {
             Boolean randomBossSelection = extractBooleanValue(json, "randomBossSelection");
             theme.setRandomBossSelection(randomBossSelection != null ? randomBossSelection : false);
 
-            // Parse naturalSpawn (default true) - if false, theme won't spawn naturally
-            // Also supports legacy "testOnly" field (inverted logic) for backwards compatibility
+            // Parse naturalSpawn (default true) - if false, theme won't spawn naturally.
             Boolean naturalSpawn = extractBooleanValue(json, "naturalSpawn");
-            if (naturalSpawn != null) {
-                theme.setNaturalSpawn(naturalSpawn);
-            } else {
-                // Check for legacy testOnly field (inverted: testOnly=true means naturalSpawn=false)
-                Boolean testOnly = extractBooleanValue(json, "testOnly");
-                theme.setNaturalSpawn(testOnly != null ? !testOnly : true);
-            }
+            theme.setNaturalSpawn(naturalSpawn != null ? naturalSpawn : true);
 
             // Parse tiers array
             List<Integer> tiers = extractIntArray(json, "tiers");
@@ -132,12 +125,12 @@ public class ThemeConfigParser {
             List<BossEntry> bosses = parseBosses(json);
             theme.setBosses(bosses);
 
-            // Parse multi-wave array (optional, overrides mobs/bosses if present)
+            // Parse multi-wave array.
             List<WaveEntry> waves = parseWaves(json);
+            if (waves.isEmpty()) {
+                waves = synthesizeWavesFromTheme(theme);
+            }
             theme.setWaves(waves);
-
-            // Parse statMultipliers if present
-            parseStatMultipliers(json, theme);
 
             // Parse rewardOverride if present (per-tier custom loot)
             parseRewardOverride(json, theme);
@@ -150,116 +143,64 @@ public class ThemeConfigParser {
     }
 
     /**
-     * Parse statMultipliers section from theme JSON
+     * Parse global tier stat scaling from JSON.
+     *
+     * Format:
+     * "tierStatScaling": {
+     *   "enabled": true,
+     *   "percentPerTier": 5.0,
+     *   "applyHp": true,
+     *   "applyDamage": true,
+     *   "applySpeed": true,
+     *   "applyScale": false
+     * }
      */
-    private static void parseStatMultipliers(String json, ThemeConfig theme) {
+    public static TierStatScalingConfig parseTierStatScaling(String json) {
+        TierStatScalingConfig scaling = new TierStatScalingConfig();
         try {
-            String statMultBlock = extractJsonObject(json, "statMultipliers");
-            if (statMultBlock == null) {
-                return; // No stat multipliers configured
+            String block = extractJsonObject(json, "tierStatScaling");
+            if (block == null) {
+                return scaling;
             }
 
-            // Parse each tier's multipliers
-            for (int tier = 1; tier <= 4; tier++) {
-                String tierJson = extractJsonObject(statMultBlock, String.valueOf(tier));
-                if (tierJson == null)
-                    continue;
+            Boolean enabled = extractBooleanValue(block, "enabled");
+            if (enabled != null) {
+                scaling.setEnabled(enabled);
+            }
 
-                // Parse per-boss multipliers (new map format)
-                String bossesJson = extractJsonObject(tierJson, "bosses");
-                if (bossesJson != null) {
-                    java.util.regex.Pattern bossPattern = java.util.regex.Pattern
-                            .compile("\"([a-zA-Z0-9_]+)\"\\s*:\\s*\\{");
-                    java.util.regex.Matcher bossMatcher = bossPattern.matcher(bossesJson);
+            Double percentPerTier = extractDoubleValue(block, "percentPerTier");
+            if (percentPerTier != null) {
+                scaling.setPercentPerTier(percentPerTier);
+            }
 
-                    while (bossMatcher.find()) {
-                        String bossId = bossMatcher.group(1);
-                        if (bossId.equals("bosses"))
-                            continue;
+            Double zonePercentPerLevel = extractDoubleValue(block, "zonePercentPerLevel");
+            if (zonePercentPerLevel != null) {
+                scaling.setZonePercentPerLevel(zonePercentPerLevel);
+            }
 
-                        int startPos = bossMatcher.end() - 1;
-                        String bossMultJson = extractObjectFromPosition(bossesJson, startPos);
+            Boolean applyHp = extractBooleanValue(block, "applyHp");
+            if (applyHp != null) {
+                scaling.setApplyHp(applyHp);
+            }
 
-                        if (bossMultJson != null) {
-                            Double hp = extractDoubleValue(bossMultJson, "hp");
-                            Double damage = extractDoubleValue(bossMultJson, "damage");
-                            Double scale = extractDoubleValue(bossMultJson, "scale");
-                            Double speed = extractDoubleValue(bossMultJson, "speed");
+            Boolean applyDamage = extractBooleanValue(block, "applyDamage");
+            if (applyDamage != null) {
+                scaling.setApplyDamage(applyDamage);
+            }
 
-                            // Find boss entry and add multiplier
-                            for (BossEntry boss : theme.getBosses()) {
-                                if (boss.getId().equals(bossId)) {
-                                    boss.addMultiplier(tier,
-                                            hp != null ? hp.floatValue() : 1.0f,
-                                            damage != null ? damage.floatValue() : 1.0f,
-                                            scale != null ? scale.floatValue() : 1.0f,
-                                            speed != null ? speed.floatValue() : 1.0f);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    // Fallback to legacy single boss format
-                    String bossJson = extractJsonObject(tierJson, "boss");
-                    if (bossJson != null) {
-                        Double hp = extractDoubleValue(bossJson, "hp");
-                        Double damage = extractDoubleValue(bossJson, "damage");
-                        Double scale = extractDoubleValue(bossJson, "scale");
-                        Double speed = extractDoubleValue(bossJson, "speed");
+            Boolean applySpeed = extractBooleanValue(block, "applySpeed");
+            if (applySpeed != null) {
+                scaling.setApplySpeed(applySpeed);
+            }
 
-                        // Apply to ALL bosses in this theme if using legacy format
-                        for (BossEntry be : theme.getBosses()) {
-                            be.addMultiplier(tier,
-                                    hp != null ? hp.floatValue() : 1.0f,
-                                    damage != null ? damage.floatValue() : 1.0f,
-                                    scale != null ? scale.floatValue() : 1.0f,
-                                    speed != null ? speed.floatValue() : 1.0f);
-                        }
-                    }
-                }
-
-                // Parse per-mob multipliers
-                String mobsJson = extractJsonObject(tierJson, "mobs");
-                if (mobsJson != null) {
-                    // Find each mob entry: "MobName": { ... }
-                    java.util.regex.Pattern mobPattern = java.util.regex.Pattern
-                            .compile("\"([a-zA-Z0-9_]+)\"\\s*:\\s*\\{");
-                    java.util.regex.Matcher mobMatcher = mobPattern.matcher(mobsJson);
-
-                    while (mobMatcher.find()) {
-                        String mobId = mobMatcher.group(1);
-                        // Skip the parent "mobs" key itself
-                        if (mobId.equals("mobs"))
-                            continue;
-
-                        int startPos = mobMatcher.end() - 1;
-                        String mobMultJson = extractObjectFromPosition(mobsJson, startPos);
-
-                        if (mobMultJson != null) {
-                            Double hp = extractDoubleValue(mobMultJson, "hp");
-                            Double damage = extractDoubleValue(mobMultJson, "damage");
-                            Double scale = extractDoubleValue(mobMultJson, "scale");
-                            Double speed = extractDoubleValue(mobMultJson, "speed");
-
-                            // Find mob entry and add multiplier
-                            for (MobEntry mob : theme.getMobs()) {
-                                if (mob.getId().equals(mobId)) {
-                                    mob.addMultiplier(tier,
-                                            hp != null ? hp.floatValue() : 1.0f,
-                                            damage != null ? damage.floatValue() : 1.0f,
-                                            scale != null ? scale.floatValue() : 1.0f,
-                                            speed != null ? speed.floatValue() : 1.0f);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
+            Boolean applyScale = extractBooleanValue(block, "applyScale");
+            if (applyScale != null) {
+                scaling.setApplyScale(applyScale);
             }
         } catch (Exception e) {
-            LOGGER.warning("Error parsing stat multipliers: " + e.getMessage());
+            LOGGER.warning("Error parsing tierStatScaling: " + e.getMessage());
         }
+        return scaling;
     }
 
     /**
@@ -280,7 +221,7 @@ public class ThemeConfigParser {
             Map<Integer, TierRewards> rewardOverride = new LinkedHashMap<>();
 
             // Parse each tier's rewards: "1": {...}, "2": {...}, etc.
-            for (int tier = 1; tier <= 4; tier++) {
+            for (int tier = 1; tier <= 5; tier++) {
                 String tierKey = String.valueOf(tier);
                 String tierJson = extractJsonObject(rewardBlock, tierKey);
 
@@ -296,8 +237,6 @@ public class ThemeConfigParser {
                     tr.setBonusDrops(bonusDrops);
 
                     rewardOverride.put(tier, tr);
-                    LOGGER.info("Parsed reward override for theme '" + theme.getId() + "' tier " + tier +
-                            ": " + drops.size() + " drops, " + bonusDrops.size() + " bonus drops");
                 }
             }
 
@@ -338,7 +277,7 @@ public class ThemeConfigParser {
                     String countObj = extractJsonObject(mobJson, "count");
                     if (countObj != null) {
                         Map<Integer, Integer> tierCounts = new LinkedHashMap<>();
-                        for (int tier = 1; tier <= 4; tier++) {
+                        for (int tier = 1; tier <= 5; tier++) {
                             Integer tierCount = extractIntValue(countObj, String.valueOf(tier));
                             if (tierCount != null) {
                                 tierCounts.put(tier, tierCount);
@@ -352,9 +291,6 @@ public class ThemeConfigParser {
                         }
                     }
                 }
-
-                // Parse inline stats: "stats": { "1": { "hp": 1.0, ... } }
-                parseInlineStats(mobJson, mob);
 
                 if (id != null && !id.isEmpty()) {
                     mobs.add(mob);
@@ -382,7 +318,7 @@ public class ThemeConfigParser {
         try {
             String wavesArray = extractJsonArray(json, "waves");
             if (wavesArray == null) {
-                return waves; // No waves defined, will use legacy mobs/bosses
+                return waves;
             }
 
             // Parse each wave object in the array
@@ -411,9 +347,27 @@ public class ThemeConfigParser {
                 waves.add(wave);
             }
 
-            LOGGER.info("Parsed " + waves.size() + " waves for multi-wave theme");
         } catch (Exception e) {
             LOGGER.warning("Error parsing waves: " + e.getMessage());
+        }
+
+        return waves;
+    }
+
+    private static List<WaveEntry> synthesizeWavesFromTheme(ThemeConfig theme) {
+        List<WaveEntry> waves = new ArrayList<>();
+
+        if (theme.getMobs() != null && !theme.getMobs().isEmpty()) {
+            WaveEntry normalWave = new WaveEntry(WaveEntry.WaveType.NORMAL);
+            normalWave.setMobs(theme.getMobs());
+            waves.add(normalWave);
+        }
+
+        if (theme.getBosses() != null && !theme.getBosses().isEmpty()) {
+            WaveEntry bossWave = new WaveEntry(WaveEntry.WaveType.BOSS);
+            bossWave.setBosses(theme.getBosses());
+            bossWave.setRandomBossSelection(theme.useRandomBossSelection());
+            waves.add(bossWave);
         }
 
         return waves;
@@ -441,9 +395,6 @@ public class ThemeConfigParser {
                     if (id != null)
                         boss.setId(id);
 
-                    // Parse inline stats
-                    parseInlineStats(bossJson, boss);
-
                     if (id != null && !id.isEmpty()) {
                         bosses.add(boss);
                     }
@@ -465,40 +416,6 @@ public class ThemeConfigParser {
     }
 
     /**
-     * Helper to parse "stats" object from a mob/boss entry JSON
-     */
-    private static void parseInlineStats(String json, Object entry) {
-        try {
-            String statsJson = extractJsonObject(json, "stats");
-            if (statsJson == null)
-                return;
-
-            for (int tier = 1; tier <= 4; tier++) {
-                String tierJson = extractJsonObject(statsJson, String.valueOf(tier));
-                if (tierJson != null) {
-                    Double hp = extractDoubleValue(tierJson, "hp");
-                    Double damage = extractDoubleValue(tierJson, "damage");
-                    Double scale = extractDoubleValue(tierJson, "scale");
-                    Double speed = extractDoubleValue(tierJson, "speed");
-
-                    float fh = hp != null ? hp.floatValue() : 1.0f;
-                    float fd = damage != null ? damage.floatValue() : 1.0f;
-                    float fs = scale != null ? scale.floatValue() : 1.0f;
-                    float fsp = speed != null ? speed.floatValue() : 1.0f;
-
-                    if (entry instanceof MobEntry) {
-                        ((MobEntry) entry).addMultiplier(tier, fh, fd, fs, fsp);
-                    } else if (entry instanceof BossEntry) {
-                        ((BossEntry) entry).addMultiplier(tier, fh, fd, fs, fsp);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            // Ignore
-        }
-    }
-
-    /**
      * Parse tier settings from config JSON
      */
     public static Map<Integer, TierSettings> parseTierSettings(String json) {
@@ -511,7 +428,7 @@ public class ThemeConfigParser {
             }
 
             // Parse each tier: "1": { ... }, "2": { ... }
-            for (int tier = 1; tier <= 4; tier++) {
+            for (int tier = 1; tier <= 5; tier++) {
                 String tierKey = String.valueOf(tier);
                 String tierJson = extractJsonObject(tierBlock, tierKey);
 
@@ -554,14 +471,14 @@ public class ThemeConfigParser {
             String rewardBlock = extractJsonObject(json, "rewardSettings");
             if (rewardBlock == null) {
                 // Return defaults
-                for (int tier = 1; tier <= 4; tier++) {
+                for (int tier = 1; tier <= 5; tier++) {
                     rewards.put(tier, TierRewards.getDefaultForTier(tier));
                 }
                 return rewards;
             }
 
             // Parse each tier: "1": { ... }, "2": { ... }
-            for (int tier = 1; tier <= 4; tier++) {
+            for (int tier = 1; tier <= 5; tier++) {
                 String tierKey = String.valueOf(tier);
                 String tierJson = extractJsonObject(rewardBlock, tierKey);
 
@@ -585,7 +502,7 @@ public class ThemeConfigParser {
         } catch (Exception e) {
             LOGGER.warning("Error parsing reward settings: " + e.getMessage());
             // Return defaults
-            for (int tier = 1; tier <= 4; tier++) {
+            for (int tier = 1; tier <= 5; tier++) {
                 rewards.put(tier, TierRewards.getDefaultForTier(tier));
             }
         }
@@ -645,8 +562,7 @@ public class ThemeConfigParser {
      * Format:
      * "zoneSpawnChances": {
      *   "0": { "tier1": 1.0, "tier2": 0.0, "tier3": 0.0, "tier4": 0.0 },
-     *   "1": { "tier1": 0.8, "tier2": 0.2, "tier3": 0.0, "tier4": 0.0 },
-     *   "default": { "tier1": 0.0, "tier2": 0.0, "tier3": 0.4, "tier4": 0.6 }
+     *   "1": { "tier1": 0.8, "tier2": 0.2, "tier3": 0.0, "tier4": 0.0 }
      * }
      */
     public static Map<String, ZoneSpawnChances> parseZoneSpawnChances(String json) {
@@ -655,11 +571,10 @@ public class ThemeConfigParser {
         try {
             String zoneBlock = extractJsonObject(json, "zoneSpawnChances");
             if (zoneBlock == null) {
-                LOGGER.info("No zoneSpawnChances block found in config, using defaults");
-                return ZoneSpawnChances.generateDefaults();
+                return zoneChances;
             }
 
-            // Parse each zone entry: "0": { ... }, "1": { ... }, "default": { ... }
+            // Parse each zone entry: "0": { ... }, "1": { ... }
             Pattern zonePattern = Pattern.compile("\"([a-zA-Z0-9_]+)\"\\s*:\\s*\\{");
             Matcher matcher = zonePattern.matcher(zoneBlock);
 
@@ -683,8 +598,10 @@ public class ThemeConfigParser {
                     Double tier4 = extractDoubleValue(zoneJson, "tier4");
                     if (tier4 != null) chances.setTier4(tier4);
 
+                    Double tier5 = extractDoubleValue(zoneJson, "tier5");
+                    if (tier5 != null) chances.setTier5(tier5);
+
                     zoneChances.put(zoneKey, chances);
-                    LOGGER.info("Parsed zone spawn chances for zone '" + zoneKey + "': " + chances);
                 }
             }
         } catch (Exception e) {
@@ -693,17 +610,117 @@ public class ThemeConfigParser {
         }
 
         if (zoneChances.isEmpty()) {
-            LOGGER.warning("No zone spawn chances parsed, falling back to defaults");
-            return ZoneSpawnChances.generateDefaults();
-        }
-
-        // Ensure we have a "default" entry for unknown zones
-        if (!zoneChances.containsKey("default")) {
-            LOGGER.info("No 'default' zone config found, adding default for zone 4+");
-            zoneChances.put("default", ZoneSpawnChances.getDefaultForZone(4));
+            LOGGER.warning("No zone spawn chances parsed");
         }
 
         return zoneChances;
+    }
+
+    /**
+     * Parse per-zone base loot pools from config JSON.
+     * Format:
+     * "zoneBaseLootPools": {
+     *   "1": { "drops": [...], "bonusDrops": [...] },
+     *   "2": { "drops": [...], "bonusDrops": [...] },
+     *   "default": { "drops": [...], "bonusDrops": [...] }
+     * }
+     */
+    public static Map<String, TierRewards> parseZoneBaseLootPools(String json) {
+        Map<String, TierRewards> zonePools = new LinkedHashMap<>();
+
+        try {
+            String zoneBlock = extractJsonObject(json, "zoneBaseLootPools");
+            if (zoneBlock == null || zoneBlock.isEmpty()) {
+                return zonePools;
+            }
+
+            Pattern zonePattern = Pattern.compile("\"([a-zA-Z0-9_]+)\"\\s*:\\s*\\{");
+            Matcher matcher = zonePattern.matcher(zoneBlock);
+
+            while (matcher.find()) {
+                String zoneKey = matcher.group(1);
+                int startPos = matcher.end() - 1;
+                String zoneJson = extractObjectFromPosition(zoneBlock, startPos);
+                if (zoneJson == null) {
+                    continue;
+                }
+
+                TierRewards pool = parseTierRewardsObject(zoneJson);
+                zonePools.put(zoneKey, pool);
+            }
+        } catch (Exception e) {
+            LOGGER.warning("Error parsing zone base loot pools: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        return zonePools;
+    }
+
+    /**
+     * Parse per-tier inheritance chances from config JSON.
+     * Format:
+     * "tierInheritanceWeights": {
+     *   "2": { "tier1": 0.2, "tier2": 1.0, "tier3": 0.0, "tier4": 0.0 }
+     * }
+     */
+    public static Map<Integer, TierInheritanceWeights> parseTierInheritanceWeights(String json) {
+        Map<Integer, TierInheritanceWeights> weights = new LinkedHashMap<>();
+
+        try {
+            String weightsBlock = extractJsonObject(json, "tierInheritanceWeights");
+            if (weightsBlock == null || weightsBlock.isEmpty()) {
+                return weights;
+            }
+
+            for (int tier = 1; tier <= 5; tier++) {
+                String tierJson = extractJsonObject(weightsBlock, String.valueOf(tier));
+                if (tierJson == null) {
+                    continue;
+                }
+
+                TierInheritanceWeights tih = new TierInheritanceWeights();
+
+                Double t1 = extractDoubleValue(tierJson, "tier1");
+                if (t1 != null) {
+                    tih.setTier1Chance(t1);
+                }
+
+                Double t2 = extractDoubleValue(tierJson, "tier2");
+                if (t2 != null) {
+                    tih.setTier2Chance(t2);
+                }
+
+                Double t3 = extractDoubleValue(tierJson, "tier3");
+                if (t3 != null) {
+                    tih.setTier3Chance(t3);
+                }
+
+                Double t4 = extractDoubleValue(tierJson, "tier4");
+                if (t4 != null) {
+                    tih.setTier4Chance(t4);
+                }
+
+                Double t5 = extractDoubleValue(tierJson, "tier5");
+                if (t5 != null) {
+                    tih.setTier5Chance(t5);
+                }
+
+                tih.clampToCurrentTier(tier);
+                weights.put(tier, tih);
+            }
+        } catch (Exception e) {
+            LOGGER.warning("Error parsing tier inheritance weights: " + e.getMessage());
+            e.printStackTrace();
+        }
+
+        return weights;
+    }
+
+    private static TierRewards parseTierRewardsObject(String json) {
+        TierRewards tr = new TierRewards();
+        tr.setDrops(parseRewardEntries(json, "drops"));
+        tr.setBonusDrops(parseRewardEntries(json, "bonusDrops"));
+        return tr;
     }
 
 }

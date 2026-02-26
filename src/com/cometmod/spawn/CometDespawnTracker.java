@@ -43,17 +43,14 @@ public class CometDespawnTracker {
     
     public static CometDespawnTracker getInstance() {
         if (instance == null) {
-            LOGGER.info("[TRACKER] Creating new CometDespawnTracker instance...");
             instance = new CometDespawnTracker();
         }
         return instance;
     }
     
     private CometDespawnTracker() {
-        LOGGER.info("[TRACKER] CometDespawnTracker constructor called");
         // Load existing data on creation
         load();
-        LOGGER.info("[TRACKER] Loaded " + cometSpawnTimes.size() + " comets from file");
     }
     
     /**
@@ -165,17 +162,11 @@ public class CometDespawnTracker {
      */
     public void processOnStartup(World world, double despawnMinutes) {
         if (hasProcessedStartup) {
-            LOGGER.info("[STARTUP] Already processed startup, skipping...");
             return;
         }
         
-        LOGGER.info("[STARTUP] ===== Processing " + cometSpawnTimes.size() + " tracked comets on startup =====");
-        LOGGER.info("[STARTUP] Despawn time: " + despawnMinutes + " minutes (" + (despawnMinutes * 60) + " seconds)");
-        LOGGER.info("[STARTUP] Current time: " + System.currentTimeMillis());
-        LOGGER.info("[STARTUP] World: " + (world != null ? world.getName() : "NULL"));
         
         if (cometSpawnTimes.isEmpty()) {
-            LOGGER.info("[STARTUP] No comets to process");
             hasProcessedStartup = true;
             return;
         }
@@ -188,42 +179,33 @@ public class CometDespawnTracker {
             Long spawnTime = cometSpawnTimes.get(key);
             String tier = cometTiers.getOrDefault(key, "Unknown");
             
-            LOGGER.info("[STARTUP] Checking comet at " + pos + " (tier: " + tier + ", spawn time: " + spawnTime + ")");
             
             long remaining = getRemainingTime(pos, despawnMinutes);
             long despawnAt = spawnTime + (long)(despawnMinutes * 60 * 1000);
             
-            LOGGER.info("[STARTUP]   - Spawn time: " + spawnTime);
-            LOGGER.info("[STARTUP]   - Despawn at: " + despawnAt);
-            LOGGER.info("[STARTUP]   - Remaining: " + remaining + "ms (" + (remaining/1000) + "s)");
             
             if (remaining <= 0) {
                 // Expired - should despawn immediately
                 // Schedule with 2 second delay to ensure world is fully loaded
                 long expiredBy = -remaining;
-                LOGGER.info("[STARTUP]   - STATUS: EXPIRED (was due " + (expiredBy/1000) + "s ago), scheduling immediate removal...");
                 final Vector3i finalPos = pos;
                 com.hypixel.hytale.server.core.HytaleServer.SCHEDULED_EXECUTOR.schedule(() -> {
                     world.execute(() -> {
                         try {
-                            LOGGER.info("[STARTUP] Executing delayed despawn for expired comet at " + finalPos);
                             despawnCometBlock(world, finalPos);
                             unregisterComet(finalPos);
                         } catch (Exception e) {
-                            LOGGER.warning("[STARTUP] Error despawning expired comet at " + finalPos + ": " + e.getMessage());
                             e.printStackTrace();
                         }
                     });
                 }, 2, java.util.concurrent.TimeUnit.SECONDS);
             } else {
                 // Still has time - reschedule
-                LOGGER.info("[STARTUP]   - STATUS: ACTIVE (" + (remaining/1000) + "s remaining), rescheduling despawn...");
                 scheduleDespawn(world, pos, remaining);
             }
         }
         
         hasProcessedStartup = true;
-        LOGGER.info("[STARTUP] ===== Startup processing complete =====");
         
         // Start periodic cleanup check (every 5 minutes)
         startPeriodicCleanup(world, despawnMinutes);
@@ -233,7 +215,6 @@ public class CometDespawnTracker {
      * Start periodic cleanup task that runs every 5 minutes to catch any missed comets
      */
     private void startPeriodicCleanup(World world, double despawnMinutes) {
-        LOGGER.info("[PERIODIC] Starting periodic cleanup task (every 5 minutes)");
         
         com.hypixel.hytale.server.core.HytaleServer.SCHEDULED_EXECUTOR.scheduleWithFixedDelay(() -> {
             try {
@@ -241,12 +222,10 @@ public class CometDespawnTracker {
                     try {
                         checkAndDespawnExpired(world, despawnMinutes);
                     } catch (Exception e) {
-                        LOGGER.warning("[PERIODIC] Error in periodic cleanup: " + e.getMessage());
                         e.printStackTrace();
                     }
                 });
             } catch (Exception e) {
-                LOGGER.warning("[PERIODIC] Error scheduling periodic cleanup: " + e.getMessage());
             }
         }, 5, 5, java.util.concurrent.TimeUnit.MINUTES);
     }
@@ -259,7 +238,6 @@ public class CometDespawnTracker {
             return; // Nothing to check
         }
         
-        LOGGER.info("[PERIODIC] Checking " + cometSpawnTimes.size() + " tracked comets for expiration...");
         
         // Copy keys to avoid concurrent modification
         List<String> keys = new ArrayList<>(cometSpawnTimes.keySet());
@@ -272,7 +250,6 @@ public class CometDespawnTracker {
             if (remaining <= 0) {
                 // Expired - despawn it
                 long expiredBy = -remaining;
-                LOGGER.info("[PERIODIC] Found expired comet at " + pos + " (expired " + (expiredBy/1000) + "s ago)");
                 expired.add(pos);
             }
         }
@@ -280,18 +257,14 @@ public class CometDespawnTracker {
         // Despawn all expired comets
         for (Vector3i pos : expired) {
             try {
-                LOGGER.info("[PERIODIC] Despawning expired comet at " + pos);
                 despawnCometBlock(world, pos);
                 unregisterComet(pos);
             } catch (Exception e) {
-                LOGGER.warning("[PERIODIC] Error despawning comet at " + pos + ": " + e.getMessage());
             }
         }
         
         if (!expired.isEmpty()) {
-            LOGGER.info("[PERIODIC] Cleaned up " + expired.size() + " expired comet(s)");
         } else {
-            LOGGER.info("[PERIODIC] All comets are still active");
         }
     }
     
@@ -319,60 +292,46 @@ public class CometDespawnTracker {
      * Despawn a comet block from the world
      */
     private void despawnCometBlock(World world, Vector3i pos) {
-        LOGGER.info("[DESPAWN] Starting despawn process for comet at " + pos);
         try {
             long chunkIndex = com.hypixel.hytale.math.util.ChunkUtil.indexChunkFromBlock(pos.x, pos.z);
-            LOGGER.info("[DESPAWN] Chunk index: " + chunkIndex);
             
             WorldChunk chunk = world.getChunkIfInMemory(chunkIndex);
             if (chunk == null) {
-                LOGGER.info("[DESPAWN] Chunk not in memory, loading...");
                 chunk = world.getChunk(chunkIndex);
             }
             
             if (chunk == null) {
-                LOGGER.warning("[DESPAWN] Could not get chunk for despawn at " + pos);
                 return;
             }
             
-            LOGGER.info("[DESPAWN] Got chunk, checking block type...");
             
             // Check if block is still a comet
             com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType blockType = 
                 chunk.getBlockType(pos.x, pos.y, pos.z);
             
             if (blockType == null) {
-                LOGGER.warning("[DESPAWN] Block type is NULL at " + pos);
                 return;
             }
             
             String blockId = blockType.getId();
-            LOGGER.info("[DESPAWN] Block type at " + pos + ": " + blockId);
             
             if (blockId.contains("Comet_Stone")) {
-                LOGGER.info("[DESPAWN] Block is a comet, attempting to break...");
                 boolean broken = world.breakBlock(pos.x, pos.y, pos.z, 0);
-                LOGGER.info("[DESPAWN] breakBlock returned: " + broken);
                 
                 if (broken) {
                     chunk.markNeedsSaving();
-                    LOGGER.info("[DESPAWN] SUCCESS: Despawned comet block at " + pos);
                 } else {
-                    LOGGER.warning("[DESPAWN] FAILED: breakBlock returned false for " + pos);
                 }
             } else {
-                LOGGER.info("[DESPAWN] Block at " + pos + " is not a comet (type: " + blockId + "), skipping despawn");
             }
             
             // Clean up wave manager tracking and remove map marker (world available; store not)
             CometWaveManager waveManager = CometModPlugin.getWaveManager();
             if (waveManager != null) {
                 waveManager.handleBlockBreak(world, pos);
-                LOGGER.info("[DESPAWN] Cleaned up wave manager tracking and removed map marker");
             }
             
         } catch (Exception e) {
-            LOGGER.warning("[DESPAWN] ERROR despawning comet: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -444,16 +403,12 @@ public class CometDespawnTracker {
      * Load comet data from JSON file
      */
     public void load() {
-        LOGGER.info("[TRACKER] Loading comet despawn data...");
         File dataFile = getDataFile();
-        LOGGER.info("[TRACKER] Data file path: " + dataFile.getAbsolutePath());
         
         if (!dataFile.exists()) {
-            LOGGER.info("[TRACKER] No comet data file found at " + dataFile.getAbsolutePath() + ", starting fresh");
             return;
         }
         
-        LOGGER.info("[TRACKER] Data file exists, reading...");
         
         try {
             String content = new String(Files.readAllBytes(dataFile.toPath()));

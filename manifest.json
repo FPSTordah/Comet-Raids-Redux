@@ -1,7 +1,7 @@
 {
   "Group": "CustomMod",
   "Name": "Comet_Raids_Redux",
-  "Version": "2.0.1",
+  "Version": "3.1.0",
   "Description": "Comet_Raids_Redux - continued development of Comet Raids",
   "Authors": [
     {
@@ -10,7 +10,9 @@
   ],
   "Website": "",
   "Dependencies": {},
-  "OptionalDependencies": {},
+  "OptionalDependencies": {
+    "Config:Endgame&QoL": "*"
+  },
   "LoadBefore": {},
   "DisabledByDefault": false,
   "Main": "com.cometmod.CometModPlugin",

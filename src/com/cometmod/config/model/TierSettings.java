@@ -14,6 +14,7 @@ public class TierSettings {
     public static final TierSettings TIER2_DEFAULTS = new TierSettings(150, 4.0, 6.0);
     public static final TierSettings TIER3_DEFAULTS = new TierSettings(180, 5.0, 7.0);
     public static final TierSettings TIER4_DEFAULTS = new TierSettings(240, 6.0, 8.0);
+    public static final TierSettings TIER5_DEFAULTS = new TierSettings(300, 7.0, 9.0);
 
     public TierSettings() {
         this.timeoutSeconds = 90;
@@ -60,7 +61,7 @@ public class TierSettings {
     /**
      * Get default settings for a tier
      * 
-     * @param tier The tier number (1-4)
+     * @param tier The tier number (1-5)
      * @return Default TierSettings for that tier
      */
     public static TierSettings getDefaultForTier(int tier) {
@@ -73,6 +74,8 @@ public class TierSettings {
                 return TIER3_DEFAULTS;
             case 4:
                 return TIER4_DEFAULTS;
+            case 5:
+                return TIER5_DEFAULTS;
             default:
                 return TIER1_DEFAULTS;
         }

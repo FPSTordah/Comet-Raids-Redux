@@ -19,11 +19,7 @@ import com.cometmod.config.model.TierSettings;
 import com.cometmod.config.model.WaveEntry;
 
 /**
- * Bridge class that provides config-based theme access while maintaining
- * compatibility with the existing CometWaveManager code structure.
- * 
- * This class centralizes all config lookups and provides methods that
- * match the existing patterns in CometWaveManager.
+ * Centralized config-based theme access.
  */
 public class WaveThemeProvider {
 
@@ -258,7 +254,7 @@ public class WaveThemeProvider {
     }
 
     /**
-     * Convert CometTier to tier number (1-4).
+     * Convert CometTier to tier number (1-5).
      */
     public static int getTierNumber(CometTier tier) {
         switch (tier) {
@@ -270,6 +266,8 @@ public class WaveThemeProvider {
                 return 3;
             case LEGENDARY:
                 return 4;
+            case MYTHIC:
+                return 5;
             default:
                 return 1;
         }
@@ -285,16 +283,17 @@ public class WaveThemeProvider {
      *         multipliers
      */
     public static float[] getBossStatMultipliers(String themeId, CometTier tier, String bossId) {
+        return getBossStatMultipliers(themeId, tier, bossId, 0);
+    }
+
+    public static float[] getBossStatMultipliers(String themeId, CometTier tier, String bossId, int zoneLevel) {
         CometConfig config = CometConfig.getInstance();
-        if (config == null)
-            return null;
-
-        ThemeConfig theme = config.getTheme(themeId);
-        if (theme == null)
-            return null;
-
-        int tierNum = getTierNumber(tier);
-        return theme.getBossMultipliers(tierNum, bossId);
+        if (config == null) {
+            return new com.cometmod.config.model.TierStatScalingConfig().getMultipliersForTierAndZone(
+                    getTierNumber(tier),
+                    zoneLevel);
+        }
+        return config.getTierStatMultipliers(getTierNumber(tier), zoneLevel);
     }
 
     /**
@@ -307,16 +306,17 @@ public class WaveThemeProvider {
      *         multipliers
      */
     public static float[] getMobStatMultipliers(String themeId, CometTier tier, String baseMobId) {
+        return getMobStatMultipliers(themeId, tier, baseMobId, 0);
+    }
+
+    public static float[] getMobStatMultipliers(String themeId, CometTier tier, String baseMobId, int zoneLevel) {
         CometConfig config = CometConfig.getInstance();
-        if (config == null)
-            return null;
-
-        ThemeConfig theme = config.getTheme(themeId);
-        if (theme == null)
-            return null;
-
-        int tierNum = getTierNumber(tier);
-        return theme.getMobMultipliers(tierNum, baseMobId);
+        if (config == null) {
+            return new com.cometmod.config.model.TierStatScalingConfig().getMultipliersForTierAndZone(
+                    getTierNumber(tier),
+                    zoneLevel);
+        }
+        return config.getTierStatMultipliers(getTierNumber(tier), zoneLevel);
     }
 
     /**
@@ -329,8 +329,10 @@ public class WaveThemeProvider {
      * @return true if multipliers are configured
      */
     public static boolean hasStatMultipliers(String themeId, CometTier tier, String bossId) {
-        float[] bossMults = getBossStatMultipliers(themeId, tier, bossId);
-        return bossMults != null;
+        float[] multipliers = getBossStatMultipliers(themeId, tier, bossId);
+        return multipliers != null
+                && multipliers.length >= 4
+                && (multipliers[0] != 1.0f || multipliers[1] != 1.0f || multipliers[2] != 1.0f || multipliers[3] != 1.0f);
     }
 
     // ========== MULTI-WAVE SUPPORT ==========
@@ -339,7 +341,7 @@ public class WaveThemeProvider {
      * Check if a theme uses the multi-wave system.
      *
      * @param themeId The theme ID
-     * @return true if theme has waves defined, false for legacy mobs/bosses system
+     * @return true if theme has waves defined
      */
     public static boolean hasMultiWave(String themeId) {
         CometConfig config = CometConfig.getInstance();
@@ -351,17 +353,13 @@ public class WaveThemeProvider {
 
     /**
      * Get the total number of waves for a theme.
-     * Returns 2 for legacy themes (1 normal + 1 boss).
-     *
-     * @param themeId The theme ID
-     * @return Total wave count
      */
     public static int getWaveCount(String themeId) {
         CometConfig config = CometConfig.getInstance();
-        if (config == null) return 2;
+        if (config == null) return 0;
 
         ThemeConfig theme = config.getTheme(themeId);
-        return theme != null ? theme.getWaveCount() : 2;
+        return theme != null ? theme.getWaveCount() : 0;
     }
 
     /**
@@ -372,10 +370,10 @@ public class WaveThemeProvider {
      */
     public static int getNormalWaveCount(String themeId) {
         CometConfig config = CometConfig.getInstance();
-        if (config == null) return 1;
+        if (config == null) return 0;
 
         ThemeConfig theme = config.getTheme(themeId);
-        return theme != null ? theme.getNormalWaveCount() : 1;
+        return theme != null ? theme.getNormalWaveCount() : 0;
     }
 
     /**
@@ -386,10 +384,10 @@ public class WaveThemeProvider {
      */
     public static int getBossWaveCount(String themeId) {
         CometConfig config = CometConfig.getInstance();
-        if (config == null) return 1;
+        if (config == null) return 0;
 
         ThemeConfig theme = config.getTheme(themeId);
-        return theme != null ? theme.getBossWaveCount() : 1;
+        return theme != null ? theme.getBossWaveCount() : 0;
     }
 
     /**
@@ -401,10 +399,10 @@ public class WaveThemeProvider {
      */
     public static boolean isWaveNormal(String themeId, int waveIndex) {
         CometConfig config = CometConfig.getInstance();
-        if (config == null) return waveIndex == 0; // Legacy: wave 0 is normal
+        if (config == null) return false;
 
         ThemeConfig theme = config.getTheme(themeId);
-        if (theme == null) return waveIndex == 0;
+        if (theme == null) return false;
 
         WaveEntry wave = theme.getWave(waveIndex);
         return wave != null && wave.isNormalWave();
@@ -419,10 +417,10 @@ public class WaveThemeProvider {
      */
     public static boolean isWaveBoss(String themeId, int waveIndex) {
         CometConfig config = CometConfig.getInstance();
-        if (config == null) return waveIndex == 1; // Legacy: wave 1 is boss
+        if (config == null) return false;
 
         ThemeConfig theme = config.getTheme(themeId);
-        if (theme == null) return waveIndex == 1;
+        if (theme == null) return false;
 
         WaveEntry wave = theme.getWave(waveIndex);
         return wave != null && wave.isBossWave();
@@ -438,10 +436,7 @@ public class WaveThemeProvider {
      */
     public static String[] getMobListForWave(CometTier tier, String themeId, int waveIndex) {
         CometConfig config = CometConfig.getInstance();
-        if (config == null) {
-            // Legacy fallback for wave 0
-            return waveIndex == 0 ? getMobListForTheme(tier, themeId) : new String[0];
-        }
+        if (config == null) return new String[0];
 
         ThemeConfig theme = config.getTheme(themeId);
         if (theme == null) return new String[0];
@@ -463,10 +458,7 @@ public class WaveThemeProvider {
      */
     public static List<String> getBossesForWave(CometTier tier, String themeId, int waveIndex) {
         CometConfig config = CometConfig.getInstance();
-        if (config == null) {
-            // Legacy fallback for wave 1
-            return waveIndex == 1 ? getBossesForTheme(tier, themeId) : new ArrayList<>();
-        }
+        if (config == null) return new ArrayList<>();
 
         ThemeConfig theme = config.getTheme(themeId);
         if (theme == null) return new ArrayList<>();
@@ -488,21 +480,7 @@ public class WaveThemeProvider {
      * @return float[] {hp, damage, scale, speed} or null if not set
      */
     public static float[] getMobStatMultipliersForWave(String themeId, CometTier tier, int waveIndex, String baseMobId) {
-        CometConfig config = CometConfig.getInstance();
-        if (config == null) return null;
-
-        ThemeConfig theme = config.getTheme(themeId);
-        if (theme == null) return null;
-
-        int tierNum = getTierNumber(tier);
-
-        // For multi-wave themes, use wave-specific multipliers
-        if (theme.hasMultiWave()) {
-            return theme.getMobMultipliersForWave(waveIndex, tierNum, baseMobId);
-        }
-
-        // Legacy: use theme-level multipliers
-        return theme.getMobMultipliers(tierNum, baseMobId);
+        return getMobStatMultipliers(themeId, tier, baseMobId);
     }
 
     /**
@@ -515,21 +493,7 @@ public class WaveThemeProvider {
      * @return float[] {hp, damage, scale, speed} or null if not set
      */
     public static float[] getBossStatMultipliersForWave(String themeId, CometTier tier, int waveIndex, String bossId) {
-        CometConfig config = CometConfig.getInstance();
-        if (config == null) return null;
-
-        ThemeConfig theme = config.getTheme(themeId);
-        if (theme == null) return null;
-
-        int tierNum = getTierNumber(tier);
-
-        // For multi-wave themes, use wave-specific multipliers
-        if (theme.hasMultiWave()) {
-            return theme.getBossMultipliersForWave(waveIndex, tierNum, bossId);
-        }
-
-        // Legacy: use theme-level multipliers
-        return theme.getBossMultipliers(tierNum, bossId);
+        return getBossStatMultipliers(themeId, tier, bossId);
     }
 
     // ========== REWARD OVERRIDE SUPPORT ==========

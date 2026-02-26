@@ -28,6 +28,7 @@ public class CometReloadCommand extends AbstractWorldCommand {
 
     public CometReloadCommand() {
         super("reload", "Reloads the Comet Mod configuration from file");
+        requirePermission(CometPermissions.RELOAD);
     }
 
     @Override
