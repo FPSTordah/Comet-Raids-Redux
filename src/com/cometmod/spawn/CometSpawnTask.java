@@ -141,7 +141,20 @@ public class CometSpawnTask {
                     scheduleNextSpawn();
                     return;
                 }
-                playersToCheck = new ArrayList<>(trackedPlayers);
+                playersToCheck = new ArrayList<>();
+                for (Player trackedPlayer : trackedPlayers) {
+                    if (trackedPlayer == null) {
+                        continue;
+                    }
+                    World trackedWorld = trackedPlayer.getWorld();
+                    if (trackedWorld == null) {
+                        continue;
+                    }
+                    if (config != null && !config.isRaidEnabledInWorld(trackedWorld)) {
+                        continue;
+                    }
+                    playersToCheck.add(trackedPlayer);
+                }
             }
 
             if (!playersToCheck.isEmpty()) {
@@ -188,6 +201,11 @@ public class CometSpawnTask {
             World currentWorld = player.getWorld();
             if (currentWorld == null) {
                 LOGGER.warning("Player " + player.getDisplayName() + " is not in any world, cannot spawn comet");
+                return;
+            }
+
+            CometConfig config = CometConfig.getInstance();
+            if (config != null && !config.isRaidEnabledInWorld(currentWorld)) {
                 return;
             }
             
@@ -241,6 +259,8 @@ public class CometSpawnTask {
         try {
             World currentWorld = player.getWorld();
             if (currentWorld == null) return;
+            CometConfig config = CometConfig.getInstance();
+            if (config != null && !config.isRaidEnabledInWorld(currentWorld)) return;
 
             Store<EntityStore> currentStore = currentWorld.getEntityStore().getStore();
             if (currentStore == null) return;
@@ -256,7 +276,6 @@ public class CometSpawnTask {
             com.hypixel.hytale.math.vector.Vector3d playerPos = transform.getPosition();
             Random random = new Random();
             com.hypixel.hytale.math.vector.Vector3i targetBlockPos = null;
-            CometConfig config = CometConfig.getInstance();
 
             for (int attempt = 0; attempt < 16; attempt++) {
                 double angle = random.nextDouble() * 2 * Math.PI;

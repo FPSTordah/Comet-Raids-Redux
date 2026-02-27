@@ -7,6 +7,7 @@
     "despawnTimeMinutes": 30.0,
     "minSpawnDistance": 30,
     "maxSpawnDistance": 50,
+    "disabledWorlds": [],
     "globalComets": false
   },
   "zoneSpawnChances": {

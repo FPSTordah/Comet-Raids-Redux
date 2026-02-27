@@ -142,6 +142,19 @@ public final class ConfigValidator {
         if (despawn != null && despawn <= 0) {
             report.warn("spawnSettings.despawnTimeMinutes should be > 0.");
         }
+
+        String disabledWorlds = extractJsonArray(spawnSettings, "disabledWorlds");
+        if (spawnSettings.contains("\"disabledWorlds\"") && disabledWorlds == null) {
+            report.error("spawnSettings.disabledWorlds must be an array of world-name strings.");
+        } else if (disabledWorlds != null) {
+            List<String> worldNames = extractStringArray(disabledWorlds);
+            for (int i = 0; i < worldNames.size(); i++) {
+                String worldName = worldNames.get(i);
+                if (worldName == null || worldName.trim().isEmpty()) {
+                    report.warn("spawnSettings.disabledWorlds[" + i + "] is blank and will be ignored.");
+                }
+            }
+        }
     }
 
     private static void validateThemesSchema(String json, ConfigValidationReport report) {

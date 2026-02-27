@@ -61,6 +61,16 @@ public class CometSpawnCommand extends AbstractWorldCommand {
             return;
         }
 
+        CometConfig config = CometConfig.getInstance();
+        if (config != null && !config.isRaidEnabledInWorld(world)) {
+            String worldName = world.getName();
+            if (worldName == null || worldName.isBlank()) {
+                worldName = "unknown";
+            }
+            context.sendMessage(Message.raw("Comet raids are disabled in this world (" + worldName + ")."));
+            return;
+        }
+
         // Get tier from argument (default to Uncommon)
         CometTier tier = CometTier.UNCOMMON;
 
@@ -134,7 +144,6 @@ public class CometSpawnCommand extends AbstractWorldCommand {
 
             // Check if --onme flag is provided (spawn directly above player)
             boolean spawnOnPlayer = onMeArg.provided(context);
-            CometConfig config = CometConfig.getInstance();
 
             int spawnX = 0, spawnY = -1, spawnZ = 0;
             boolean foundValidLocation = false;

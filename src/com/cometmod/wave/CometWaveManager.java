@@ -266,6 +266,13 @@ public class CometWaveManager {
         // relogs)
         com.hypixel.hytale.server.core.universe.world.World world = ((com.hypixel.hytale.server.core.universe.world.storage.EntityStore) store
                 .getExternalData()).getWorld();
+
+        CometConfig config = CometConfig.getInstance();
+        if (config != null && !config.isRaidEnabledInWorld(world)) {
+            LOGGER.info("Blocked comet activation at " + blockPos + " in disabled world " + world.getName());
+            return;
+        }
+
         com.hypixel.hytale.server.core.universe.world.meta.BlockState blockState = world.getState(blockPos.x,
                 blockPos.y, blockPos.z, false);
 

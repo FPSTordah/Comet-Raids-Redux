@@ -40,6 +40,16 @@ public class CometTestCommand extends AbstractWorldCommand {
             context.sendMessage(Message.raw("This command can only be used by players!"));
             return;
         }
+
+        CometConfig config = CometConfig.getInstance();
+        if (config != null && !config.isRaidEnabledInWorld(world)) {
+            String worldName = world.getName();
+            if (worldName == null || worldName.isBlank()) {
+                worldName = "unknown";
+            }
+            context.sendMessage(Message.raw("Comet raids are disabled in this world (" + worldName + ")."));
+            return;
+        }
         
         try {
             Player player = context.senderAs(Player.class);

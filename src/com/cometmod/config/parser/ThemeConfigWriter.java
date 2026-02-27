@@ -32,7 +32,7 @@ public class ThemeConfigWriter {
         // Call overloaded method with defaults for new parameters
         return generateFullConfig(minDelaySeconds, maxDelaySeconds, spawnChance,
                 despawnTimeMinutes, minSpawnDistance, maxSpawnDistance,
-                true, false, // naturalSpawnsEnabled, globalComets
+                true, false, null, // naturalSpawnsEnabled, globalComets, disabledWorlds
                 themes, tierSettings, rewardSettings, null);
     }
 
@@ -98,7 +98,7 @@ public class ThemeConfigWriter {
         // Call overloaded method with defaults for new parameters
         return generateFullConfig(minDelaySeconds, maxDelaySeconds, spawnChance,
                 despawnTimeMinutes, minSpawnDistance, maxSpawnDistance,
-                true, false, // naturalSpawnsEnabled, globalComets
+                true, false, null, // naturalSpawnsEnabled, globalComets, disabledWorlds
                 themes, tierSettings, rewardSettings, zoneSpawnChances);
     }
 
@@ -114,7 +114,23 @@ public class ThemeConfigWriter {
         return generateFullConfig(
                 minDelaySeconds, maxDelaySeconds, spawnChance,
                 despawnTimeMinutes, minSpawnDistance, maxSpawnDistance,
-                naturalSpawnsEnabled, globalComets,
+                naturalSpawnsEnabled, globalComets, null,
+                themes, tierSettings, rewardSettings, zoneSpawnChances);
+    }
+
+    /**
+     * Generate complete config JSON with all settings including disabled world list.
+     */
+    public static String generateFullConfig(
+            int minDelaySeconds, int maxDelaySeconds, double spawnChance,
+            double despawnTimeMinutes, int minSpawnDistance, int maxSpawnDistance,
+            boolean naturalSpawnsEnabled, boolean globalComets, List<String> disabledWorlds,
+            Map<String, ThemeConfig> themes, Map<Integer, TierSettings> tierSettings,
+            Map<Integer, TierRewards> rewardSettings, Map<String, ZoneSpawnChances> zoneSpawnChances) {
+        return generateFullConfig(
+                minDelaySeconds, maxDelaySeconds, spawnChance,
+                despawnTimeMinutes, minSpawnDistance, maxSpawnDistance,
+                naturalSpawnsEnabled, globalComets, disabledWorlds,
                 themes, tierSettings, rewardSettings, zoneSpawnChances,
                 null, null, false, true, null);
     }
@@ -125,7 +141,7 @@ public class ThemeConfigWriter {
     public static String generateFullConfig(
             int minDelaySeconds, int maxDelaySeconds, double spawnChance,
             double despawnTimeMinutes, int minSpawnDistance, int maxSpawnDistance,
-            boolean naturalSpawnsEnabled, boolean globalComets,
+            boolean naturalSpawnsEnabled, boolean globalComets, List<String> disabledWorlds,
             Map<String, ThemeConfig> themes, Map<Integer, TierSettings> tierSettings,
             Map<Integer, TierRewards> rewardSettings, Map<String, ZoneSpawnChances> zoneSpawnChances,
             Map<String, TierRewards> zoneBaseLootPools, Map<Integer, TierInheritanceWeights> tierInheritanceWeights,
@@ -144,6 +160,9 @@ public class ThemeConfigWriter {
         sb.append(INDENT).append(INDENT).append("\"despawnTimeMinutes\": ").append(despawnTimeMinutes).append(",\n");
         sb.append(INDENT).append(INDENT).append("\"minSpawnDistance\": ").append(minSpawnDistance).append(",\n");
         sb.append(INDENT).append(INDENT).append("\"maxSpawnDistance\": ").append(maxSpawnDistance).append(",\n");
+        sb.append(INDENT).append(INDENT).append("\"disabledWorlds\": ");
+        appendStringArrayInline(sb, sanitizeWorldNames(disabledWorlds));
+        sb.append(",\n");
         sb.append(INDENT).append(INDENT).append("\"globalComets\": ").append(globalComets).append("\n");
         sb.append(INDENT).append("},\n\n");
 
@@ -450,6 +469,36 @@ public class ThemeConfigWriter {
 
         sb.append(INDENT).append(INDENT).append("}\n");
         sb.append(INDENT).append("},\n\n");
+    }
+
+    private static List<String> sanitizeWorldNames(List<String> worldNames) {
+        if (worldNames == null || worldNames.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+
+        List<String> sanitized = new java.util.ArrayList<>();
+        for (String worldName : worldNames) {
+            if (worldName == null) {
+                continue;
+            }
+            String trimmed = worldName.trim();
+            if (trimmed.isEmpty() || sanitized.contains(trimmed)) {
+                continue;
+            }
+            sanitized.add(trimmed);
+        }
+        return sanitized;
+    }
+
+    private static void appendStringArrayInline(StringBuilder sb, List<String> values) {
+        sb.append("[");
+        for (int i = 0; i < values.size(); i++) {
+            sb.append("\"").append(escapeString(values.get(i))).append("\"");
+            if (i < values.size() - 1) {
+                sb.append(", ");
+            }
+        }
+        sb.append("]");
     }
 
     /**

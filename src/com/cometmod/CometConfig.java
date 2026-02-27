@@ -11,7 +11,9 @@ import com.cometmod.wave.*;
 import static com.cometmod.config.parser.ConfigJson.extractBooleanValue;
 import static com.cometmod.config.parser.ConfigJson.extractDoubleValue;
 import static com.cometmod.config.parser.ConfigJson.extractIntValue;
+import static com.cometmod.config.parser.ConfigJson.extractJsonArray;
 import static com.cometmod.config.parser.ConfigJson.extractJsonObject;
+import static com.cometmod.config.parser.ConfigJson.extractStringArray;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -78,6 +80,10 @@ public class CometConfig {
 
     // Global comets setting - if true, any player can trigger any comet (not just the owner)
     public boolean globalComets = false;
+
+    // If non-empty, comet raids are disabled in the listed world names (case-insensitive).
+    private final List<String> disabledWorlds = new ArrayList<>();
+    private final Set<String> disabledWorldLookup = new LinkedHashSet<>();
 
     // Theme configurations (new)
     private Map<String, ThemeConfig> themes = new LinkedHashMap<>();
@@ -343,6 +349,11 @@ public class CometConfig {
             Boolean naturalSpawnsEnabled = extractBooleanValue(parseFrom, "naturalSpawnsEnabled");
             if (naturalSpawnsEnabled != null) config.naturalSpawnsEnabled = naturalSpawnsEnabled;
 
+            String disabledWorldsArray = extractJsonArray(parseFrom, "disabledWorlds");
+            if (disabledWorldsArray != null) {
+                config.setDisabledWorlds(extractStringArray(disabledWorldsArray));
+            }
+
             // Parse themes using ThemeConfigParser
             config.themes = ThemeConfigParser.parseThemes(json);
             config.themeList = new ArrayList<>(config.themes.values());
@@ -433,7 +444,7 @@ public class CometConfig {
             String json = ThemeConfigWriter.generateFullConfig(
                     minDelaySeconds, maxDelaySeconds, spawnChance,
                     despawnTimeMinutes, minSpawnDistance, maxSpawnDistance,
-                    naturalSpawnsEnabled, globalComets,
+                    naturalSpawnsEnabled, globalComets, getDisabledWorlds(),
                     themes, tierSettings, rewardSettings, zoneSpawnChances,
                     zoneBaseLootPools, tierInheritanceWeights,
                     protectedZoneSpawnRulesEnabled, protectedZoneDefaultInProtectedRegion,
@@ -864,6 +875,57 @@ public class CometConfig {
         }
 
         return changed;
+    }
+
+    public synchronized List<String> getDisabledWorlds() {
+        return new ArrayList<>(disabledWorlds);
+    }
+
+    public synchronized void setDisabledWorlds(List<String> worldNames) {
+        disabledWorlds.clear();
+        disabledWorldLookup.clear();
+
+        if (worldNames == null) {
+            return;
+        }
+
+        for (String worldName : worldNames) {
+            String normalized = normalizeWorldName(worldName);
+            if (normalized == null || disabledWorldLookup.contains(normalized)) {
+                continue;
+            }
+
+            disabledWorldLookup.add(normalized);
+            disabledWorlds.add(worldName.trim());
+        }
+    }
+
+    public boolean isRaidEnabledInWorld(com.hypixel.hytale.server.core.universe.world.World world) {
+        if (world == null) {
+            return true;
+        }
+        return isRaidEnabledInWorld(world.getName());
+    }
+
+    public synchronized boolean isRaidEnabledInWorld(String worldName) {
+        String normalized = normalizeWorldName(worldName);
+        if (normalized == null) {
+            return true;
+        }
+        return !disabledWorldLookup.contains(normalized);
+    }
+
+    private static String normalizeWorldName(String worldName) {
+        if (worldName == null) {
+            return null;
+        }
+
+        String trimmed = worldName.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+
+        return trimmed.toLowerCase(Locale.ROOT);
     }
 
     /**
