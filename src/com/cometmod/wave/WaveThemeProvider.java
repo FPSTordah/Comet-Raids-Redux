@@ -9,8 +9,15 @@ import com.cometmod.wave.*;
 
 
 import java.util.ArrayList;
+import java.util.ArrayDeque;
+import java.util.Collections;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.logging.Logger;
 
 import com.cometmod.config.model.ThemeConfig;
@@ -25,6 +32,10 @@ public class WaveThemeProvider {
 
     private static final Logger LOGGER = Logger.getLogger("WaveThemeProvider");
     private static final Random RANDOM = new Random();
+    // Per-tier shuffled theme bags to avoid repeated streaks from pure nextInt selection.
+    private static final Map<Integer, Deque<String>> TIER_THEME_BAGS = new HashMap<>();
+    private static final Map<Integer, Set<String>> TIER_THEME_BAG_SIGNATURES = new HashMap<>();
+    private static final Map<Integer, String> LAST_THEME_BY_TIER = new HashMap<>();
 
     /**
      * Select a random theme ID for the given comet tier.
@@ -48,10 +59,66 @@ public class WaveThemeProvider {
             return null;
         }
 
-        ThemeConfig selected = availableThemes.get(RANDOM.nextInt(availableThemes.size()));
-        LOGGER.info("Selected theme: " + selected.getId() + " (" + selected.getDisplayName() + ") for tier "
+        String selectedThemeId = selectThemeFromBag(tierNum, availableThemes);
+        if (selectedThemeId == null || selectedThemeId.isBlank()) {
+            LOGGER.warning("Theme bag selection failed for tier " + tier.getName());
+            return null;
+        }
+
+        ThemeConfig selected = config.getTheme(selectedThemeId);
+        String selectedName = selected != null ? selected.getDisplayName() : selectedThemeId;
+        LOGGER.info("Selected theme: " + selectedThemeId + " (" + selectedName + ") for tier "
                 + tier.getName());
-        return selected.getId();
+        return selectedThemeId;
+    }
+
+    private static synchronized String selectThemeFromBag(int tierNum, List<ThemeConfig> availableThemes) {
+        List<String> availableIds = new ArrayList<>();
+        for (ThemeConfig theme : availableThemes) {
+            if (theme != null && theme.getId() != null && !theme.getId().isBlank()) {
+                availableIds.add(theme.getId());
+            }
+        }
+
+        if (availableIds.isEmpty()) {
+            return null;
+        }
+
+        Set<String> availableSet = new HashSet<>(availableIds);
+        Deque<String> bag = TIER_THEME_BAGS.get(tierNum);
+        Set<String> bagSignature = TIER_THEME_BAG_SIGNATURES.get(tierNum);
+
+        if (bag == null || bag.isEmpty() || bagSignature == null || !bagSignature.equals(availableSet)) {
+            bag = createShuffledBag(availableIds, LAST_THEME_BY_TIER.get(tierNum));
+            TIER_THEME_BAGS.put(tierNum, bag);
+            TIER_THEME_BAG_SIGNATURES.put(tierNum, availableSet);
+        }
+
+        String selected = bag.pollFirst();
+        if (selected == null) {
+            return null;
+        }
+
+        LAST_THEME_BY_TIER.put(tierNum, selected);
+
+        if (bag.isEmpty()) {
+            bag = createShuffledBag(availableIds, selected);
+            TIER_THEME_BAGS.put(tierNum, bag);
+            TIER_THEME_BAG_SIGNATURES.put(tierNum, availableSet);
+        }
+
+        return selected;
+    }
+
+    private static Deque<String> createShuffledBag(List<String> availableIds, String lastSelectedTheme) {
+        List<String> shuffled = new ArrayList<>(availableIds);
+        Collections.shuffle(shuffled, RANDOM);
+
+        if (lastSelectedTheme != null && shuffled.size() > 1 && lastSelectedTheme.equals(shuffled.get(0))) {
+            Collections.swap(shuffled, 0, 1);
+        }
+
+        return new ArrayDeque<>(shuffled);
     }
 
     /**

@@ -7,7 +7,7 @@ Ever wanted random events to spice up your Hytale gameplay? This mod adds fallin
 
 `Comet_Raids_Redux` is the actively maintained continuation of the original Comet Raids project.
 
-Current release: **v3.2.0**
+Current release: **v3.2.1**
 
 This mod is built for players who want a raid-like experience and server owners who want a customizable reward system. You can create custom themes, define multi-wave encounters, override loot tables per theme, and tweak every aspect of spawning and combat.
 
@@ -54,7 +54,7 @@ Recommended admin setup in LuckPerms:
 
 ### Deploy
 
-Place `Comet_Raids_Redux-3.2.0.jar` in your server mods/plugins location, replacing the old jar, then restart the server.
+Place `Comet_Raids_Redux-3.2.1.jar` in your server mods/plugins location, replacing the old jar, then restart the server.
 
 ### IDE
 
@@ -193,7 +193,7 @@ mvn clean package
 
 This creates:
 
-- `target/Comet_Raids_Redux-3.2.0.jar`
+- `target/Comet_Raids_Redux-3.2.1.jar`
 
 The output JAR includes:
 

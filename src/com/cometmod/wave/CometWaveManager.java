@@ -904,16 +904,13 @@ public class CometWaveManager {
             world.breakBlock(blockPos.x, blockPos.y, blockPos.z, 0);
             LOGGER.info("Broke comet block at " + blockPos + " due to timeout");
 
-            // Clean up all tracking data
-            cometOwners.remove(blockPos);
-            cometTiers.remove(blockPos);
-            cometThemes.remove(blockPos);
-
-            // Unregister from despawn tracker
-            CometDespawnTracker.getInstance().unregisterComet(blockPos);
         } catch (Exception e) {
             LOGGER.severe("Error breaking comet block on timeout: " + e.getMessage());
             e.printStackTrace();
+        } finally {
+            // Always clear all tracking (including forced theme and zone) on timeout cleanup.
+            waveState.clearForBlock(blockPos);
+            CometDespawnTracker.getInstance().unregisterComet(blockPos);
         }
 
         // Show "Wave Failed!" message and hide the "Wave Active!" title

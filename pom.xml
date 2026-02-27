@@ -6,7 +6,7 @@
 
     <groupId>com.cometmod</groupId>
     <artifactId>comet-raids-redux</artifactId>
-    <version>3.2.0</version>
+    <version>3.2.1</version>
     <packaging>jar</packaging>
     <name>Comet_Raids_Redux</name>
 
