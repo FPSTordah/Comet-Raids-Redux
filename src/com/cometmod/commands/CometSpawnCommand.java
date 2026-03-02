@@ -24,7 +24,7 @@ import com.hypixel.hytale.server.core.universe.world.WorldMapTracker;
 import com.hypixel.hytale.server.core.universe.world.chunk.WorldChunk;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.core.util.EventTitleUtil;
-import com.cometmod.integration.WorldProtectRegionGuard;
+import com.cometmod.integration.ClaimProtectionGuard;
 
 import javax.annotation.Nonnull;
 import java.util.Random;
@@ -154,11 +154,9 @@ public class CometSpawnCommand extends AbstractWorldCommand {
                 spawnZ = (int) playerPos.z;
                 spawnY = (int) playerPos.y;
                 int targetY = spawnY + 1;
-                if (!WorldProtectRegionGuard.canSpawnAt(world, spawnX, targetY, spawnZ, config)) {
-                    String blockedRegion = WorldProtectRegionGuard.getPrimaryRegionIdAt(world, spawnX, targetY, spawnZ);
+                if (!ClaimProtectionGuard.canSpawnAt(world, spawnX, targetY, spawnZ, config)) {
                     context.sendMessage(Message.raw(
-                            "Comet blocked by protected-zone rules in region: " +
-                                    (blockedRegion != null ? blockedRegion : "unknown")));
+                            "Comet blocked by claim/protected-zone rules at this location."));
                     return;
                 }
                 foundValidLocation = true;
@@ -178,7 +176,7 @@ public class CometSpawnCommand extends AbstractWorldCommand {
                         continue;
                     if (isInWater(world, x, y, z) || isInWater(world, x, y + 1, z))
                         continue;
-                    if (!WorldProtectRegionGuard.canSpawnAt(world, x, y + 1, z, config))
+                    if (!ClaimProtectionGuard.canSpawnAt(world, x, y + 1, z, config))
                         continue;
                     spawnX = x;
                     spawnY = y;
@@ -392,6 +390,12 @@ public class CometSpawnCommand extends AbstractWorldCommand {
             String themeId, java.util.UUID ownerUUID, int zoneId) {
         world.execute(() -> {
             try {
+                CometConfig config = CometConfig.getInstance();
+                if (!ClaimProtectionGuard.canSpawnAt(world, blockPos.x, blockPos.y, blockPos.z, config)) {
+                    LOGGER.info("Direct comet spawn blocked by claim/protected-zone rules at " + blockPos);
+                    return;
+                }
+
                 long chunkIndex = com.hypixel.hytale.math.util.ChunkUtil.indexChunkFromBlock(
                         blockPos.x, blockPos.z);
                 WorldChunk chunk = world.getChunkIfInMemory(chunkIndex);

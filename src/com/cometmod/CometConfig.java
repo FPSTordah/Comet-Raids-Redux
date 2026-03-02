@@ -110,6 +110,12 @@ public class CometConfig {
     private boolean protectedZoneDefaultInProtectedRegion = true;
     private Map<String, Boolean> protectedZoneRegionOverrides = new LinkedHashMap<>();
 
+    // Generic claim protection integration
+    private boolean claimProtectEnabled = false;
+    private boolean claimProtectAutoDetectProviders = false;
+    private final List<String> claimProtectProviders = new ArrayList<>();
+    private final Set<String> claimProtectProviderLookup = new LinkedHashSet<>();
+
     // Bench recipes (new)
 
     // Track if config was loaded successfully
@@ -204,6 +210,7 @@ public class CometConfig {
                 logValidationReport("comet_config.json", ConfigValidator.validateCometConfig(content));
                 config = parseJson(content);
                 loadThemesFromSeparateFile(config, configFile);
+                syncConfigFilesOnBoot(config, configFile);
                 LOGGER.info("Loaded Comet Mod configuration from: " + configFile.getAbsolutePath());
 
                 // Warn if no themes
@@ -400,6 +407,25 @@ public class CometConfig {
                 }
             }
 
+            // Parse generic claim protection rules
+            String claimProtect = extractJsonObject(json, "claimProtect");
+            if (claimProtect != null) {
+                Boolean enabled = extractBooleanValue(claimProtect, "enabled");
+                if (enabled != null) {
+                    config.claimProtectEnabled = enabled;
+                }
+
+                Boolean autoDetectProviders = extractBooleanValue(claimProtect, "autoDetectProviders");
+                if (autoDetectProviders != null) {
+                    config.claimProtectAutoDetectProviders = autoDetectProviders;
+                }
+
+                String providersArray = extractJsonArray(claimProtect, "providers");
+                if (providersArray != null) {
+                    config.setClaimProtectProviders(extractStringArray(providersArray));
+                }
+            }
+
         } catch (Exception e) {
             LOGGER.warning("Error parsing JSON: " + e.getMessage());
             e.printStackTrace();
@@ -419,36 +445,10 @@ public class CometConfig {
             parentDir.mkdirs();
         }
 
-        // Ensure we have themes and tier settings to save
-        if (themes.isEmpty()) {
-            themes = DefaultThemes.generateDefaults();
-            themeList = new ArrayList<>(themes.values());
-        }
-        if (tierSettings.isEmpty()) {
-            tierSettings = DefaultThemes.getDefaultTierSettings();
-        }
-        if (rewardSettings.isEmpty()) {
-            rewardSettings = getDefaultRewardSettings();
-        }
-        if (zoneSpawnChances.isEmpty()) {
-            zoneSpawnChances = ZoneSpawnChances.generateDefaults();
-        }
-        if (tierInheritanceWeights.isEmpty()) {
-            tierInheritanceWeights = getDefaultTierInheritanceWeights();
-        }
-        if (zoneBaseLootPools.isEmpty()) {
-            zoneBaseLootPools = getDefaultZoneBaseLootPools();
-        }
+        ensureDefaultsForPersistence();
 
         try (FileWriter writer = new FileWriter(configFile)) {
-            String json = ThemeConfigWriter.generateFullConfig(
-                    minDelaySeconds, maxDelaySeconds, spawnChance,
-                    despawnTimeMinutes, minSpawnDistance, maxSpawnDistance,
-                    naturalSpawnsEnabled, globalComets, getDisabledWorlds(),
-                    themes, tierSettings, rewardSettings, zoneSpawnChances,
-                    zoneBaseLootPools, tierInheritanceWeights,
-                    protectedZoneSpawnRulesEnabled, protectedZoneDefaultInProtectedRegion,
-                    protectedZoneRegionOverrides);
+            String json = buildConfigJsonForPersistence();
             writer.write(json);
             writer.flush();
             LOGGER.info("Saved Comet Mod configuration to: " + configFile.getAbsolutePath());
@@ -576,6 +576,94 @@ public class CometConfig {
         } catch (Exception e) {
             LOGGER.warning("Failed to save themes file '" + themesFile.getAbsolutePath() + "': " + e.getMessage());
         }
+    }
+
+    private void ensureDefaultsForPersistence() {
+        if (themes.isEmpty()) {
+            themes = DefaultThemes.generateDefaults();
+            themeList = new ArrayList<>(themes.values());
+        }
+        if (tierSettings.isEmpty()) {
+            tierSettings = DefaultThemes.getDefaultTierSettings();
+        }
+        if (rewardSettings.isEmpty()) {
+            rewardSettings = getDefaultRewardSettings();
+        }
+        if (zoneSpawnChances.isEmpty()) {
+            zoneSpawnChances = ZoneSpawnChances.generateDefaults();
+        }
+        if (tierInheritanceWeights.isEmpty()) {
+            tierInheritanceWeights = getDefaultTierInheritanceWeights();
+        }
+        if (zoneBaseLootPools.isEmpty()) {
+            zoneBaseLootPools = getDefaultZoneBaseLootPools();
+        }
+        if (tierStatScaling == null) {
+            tierStatScaling = new TierStatScalingConfig();
+        }
+    }
+
+    private String buildConfigJsonForPersistence() {
+        return ThemeConfigWriter.generateFullConfig(
+                minDelaySeconds, maxDelaySeconds, spawnChance,
+                despawnTimeMinutes, minSpawnDistance, maxSpawnDistance,
+                naturalSpawnsEnabled, globalComets, getDisabledWorlds(),
+                themes, tierSettings, rewardSettings, zoneSpawnChances,
+                zoneBaseLootPools, tierInheritanceWeights,
+                protectedZoneSpawnRulesEnabled, protectedZoneDefaultInProtectedRegion,
+                protectedZoneRegionOverrides,
+                claimProtectEnabled, claimProtectAutoDetectProviders, getClaimProtectProviders());
+    }
+
+    private static void syncConfigFilesOnBoot(CometConfig config, File configFile) {
+        if (config == null || configFile == null) {
+            return;
+        }
+
+        try {
+            config.ensureDefaultsForPersistence();
+
+            String mainConfigJson = config.buildConfigJsonForPersistence();
+            upsertJsonIfChanged(configFile, mainConfigJson, "comet_config.json");
+
+            File themesFile = getThemesConfigFile(configFile);
+            String themesJson = ThemeConfigWriter.generateThemesAndMonsterGroupsConfig(config.themes, config.tierStatScaling);
+            upsertJsonIfChanged(themesFile, themesJson, THEMES_CONFIG_FILE_NAME);
+        } catch (Exception e) {
+            LOGGER.warning("Failed to merge/create config JSON files on boot: " + e.getMessage());
+        }
+    }
+
+    private static void upsertJsonIfChanged(File file, String desiredContent, String logicalName) throws IOException {
+        if (file == null || desiredContent == null) {
+            return;
+        }
+
+        File parent = file.getParentFile();
+        if (parent != null && !parent.exists()) {
+            parent.mkdirs();
+        }
+
+        boolean existed = file.exists() && file.isFile();
+        String currentContent = existed ? java.nio.file.Files.readString(file.toPath()) : "";
+
+        if (normalizeForCompare(currentContent).equals(normalizeForCompare(desiredContent))) {
+            return;
+        }
+
+        java.nio.file.Files.writeString(file.toPath(), desiredContent);
+        if (existed) {
+            LOGGER.info("Merged and synchronized " + logicalName + " on boot.");
+        } else {
+            LOGGER.info("Created " + logicalName + " on boot.");
+        }
+    }
+
+    private static String normalizeForCompare(String input) {
+        if (input == null) {
+            return "";
+        }
+        return input.replace("\r\n", "\n").trim();
     }
 
     /**
@@ -824,6 +912,45 @@ public class CometConfig {
         return (override != null) ? override : protectedZoneDefaultInProtectedRegion;
     }
 
+    public boolean isClaimProtectEnabled() {
+        return claimProtectEnabled;
+    }
+
+    public boolean isClaimProtectAutoDetectProviders() {
+        return claimProtectAutoDetectProviders;
+    }
+
+    public synchronized List<String> getClaimProtectProviders() {
+        return new ArrayList<>(claimProtectProviders);
+    }
+
+    public synchronized void setClaimProtectProviders(List<String> providers) {
+        claimProtectProviders.clear();
+        claimProtectProviderLookup.clear();
+
+        if (providers == null) {
+            return;
+        }
+
+        for (String provider : providers) {
+            if (provider == null) {
+                continue;
+            }
+            String trimmed = provider.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+
+            String normalized = normalizeClaimProviderName(trimmed);
+            if (normalized == null || claimProtectProviderLookup.contains(normalized)) {
+                continue;
+            }
+
+            claimProtectProviderLookup.add(normalized);
+            claimProtectProviders.add(trimmed);
+        }
+    }
+
     /**
      * Synchronize per-region overrides against currently existing WorldProtect regions.
      * New regions are auto-added using defaultInProtectedRegion. Deleted regions are removed.
@@ -926,6 +1053,19 @@ public class CometConfig {
         }
 
         return trimmed.toLowerCase(Locale.ROOT);
+    }
+
+    private static String normalizeClaimProviderName(String providerName) {
+        if (providerName == null) {
+            return null;
+        }
+
+        String normalized = providerName.trim().toLowerCase(Locale.ROOT)
+                .replace(" ", "")
+                .replace("-", "")
+                .replace("_", "");
+
+        return normalized.isEmpty() ? null : normalized;
     }
 
     /**

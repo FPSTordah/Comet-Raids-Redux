@@ -176,14 +176,6 @@ public class CometModPlugin extends JavaPlugin {
                     }
                 });
 
-        com.hypixel.hytale.server.core.HytaleServer.SCHEDULED_EXECUTOR.scheduleAtFixedRate(() -> {
-            try {
-                CometWaveManager wm = getWaveManager();
-                if (wm != null) wm.checkTimeouts();
-            } catch (Exception e) {
-                // Ignore
-            }
-        }, 5L, 5L, java.util.concurrent.TimeUnit.SECONDS);
     }
 
     @Override
@@ -283,7 +275,7 @@ public class CometModPlugin extends JavaPlugin {
                         // Ignore
                     }
                 },
-                5000L, 5000L, java.util.concurrent.TimeUnit.MILLISECONDS);
+                1000L, 1000L, java.util.concurrent.TimeUnit.MILLISECONDS);
     }
 
     @Override

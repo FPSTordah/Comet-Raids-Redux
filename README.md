@@ -7,7 +7,7 @@ Ever wanted random events to spice up your Hytale gameplay? This mod adds fallin
 
 `Comet_Raids_Redux` is the actively maintained continuation of the original Comet Raids project.
 
-Current release: **v3.2.1**
+Current release: **v3.2.4**
 
 This mod is built for players who want a raid-like experience and server owners who want a customizable reward system. You can create custom themes, define multi-wave encounters, override loot tables per theme, and tweak every aspect of spawning and combat.
 
@@ -54,7 +54,7 @@ Recommended admin setup in LuckPerms:
 
 ### Deploy
 
-Place `Comet_Raids_Redux-3.2.1.jar` in your server mods/plugins location, replacing the old jar, then restart the server.
+Place `Comet_Raids_Redux-3.2.4.jar` in your server mods/plugins location, replacing the old jar, then restart the server.
 
 ### IDE
 
@@ -193,7 +193,7 @@ mvn clean package
 
 This creates:
 
-- `target/Comet_Raids_Redux-3.2.1.jar`
+- `target/Comet_Raids_Redux-3.2.4.jar`
 
 The output JAR includes:
 
@@ -280,6 +280,24 @@ Schema supports two modes:
 
 > **Tip:** If you want comets to only spawn at fixed locations, set `"naturalSpawnsEnabled": false` and configure spawn points in `fixed_spawns.json`.
 
+**claimProtect** - Generic claim-plugin spawn blocking
+```json
+"claimProtect": {
+  "enabled": true,                     // If true, block natural comet spawns inside configured claim systems
+  "autoDetectProviders": false,        // If true, auto-detect installed supported providers and ignore the providers list
+  "providers": ["WorldProtect", "HyperFactions", "Hyfaction", "SimpleClaims", "WiFlowsClaims", "UltimateFaction", "ElbaphFactions"] // Case-insensitive provider names
+}
+```
+
+Supported providers right now:
+- `HyperFactions`
+- `WorldProtect`
+- `Hyfaction`
+- `SimpleClaims`
+- `WiFlowsClaims`
+- `UltimateFaction`
+- `ElbaphFactions`
+
 **zoneSpawnChances** - Tier distribution per zone
 ```json
 "zoneSpawnChances": {
@@ -348,6 +366,14 @@ Validation emits actionable logs with this prefix:
 
 Errors do not hard-stop startup, but indicate config issues you should fix.
 
+### Boot-Time JSON Sync
+
+On startup, the mod now automatically:
+- Creates missing `comet_config.json`, `comet_themes_and_monster_groups.json`, and `fixed_spawns.json`
+- Merges/synchronizes missing config keys into existing files using current schema defaults
+
+This keeps older config files forward-compatible after updates without manual key-by-key edits.
+
 ### Schema Notes (Tooling-Safe)
 
 Some config objects intentionally include pseudo-comment keys for human guidance.
@@ -395,6 +421,8 @@ The config is fully JSON - just copy an existing theme, rename it, and start twe
 
 ## Version Notes
 
+- `v3.2.4`: Added DeityLandProtection claim integration.
+- `v3.2.3`: Improved wave timer reliability, fixed stuck wave progression in edge cases, and improved kill-count tracking compatibility with mob/combat overhaul mods.
 - `manifest.json` controls runtime compatibility (`ServerVersion`).
 - `pom.xml` controls compile dependency (`hytale.server.version`).
 - Keep them aligned when updating to a new server release.

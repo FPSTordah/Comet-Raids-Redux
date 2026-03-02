@@ -133,6 +133,7 @@ public class CometWaveManager {
         final List<Ref<EntityStore>> spawnedMobs = new ArrayList<>();
         final Vector3i blockPos;
         final Ref<EntityStore> playerRef;
+        final Store<EntityStore> store;
         long startTime; // Track when wave started for timeout (not final - needs to be reset for each wave)
         long lastTimerUpdate = 0; // Track last time timer was updated (to update every 5 seconds)
         int initialSpawnCount = 0; // Track how many mobs were actually spawned
@@ -143,9 +144,10 @@ public class CometWaveManager {
         int totalWaveCount = 2; // Total waves in this encounter (default 2: 1 normal + 1 boss)
         String themeName = "Unknown"; // Display name of the current theme
 
-        WaveData(Vector3i blockPos, Ref<EntityStore> playerRef) {
+        WaveData(Vector3i blockPos, Ref<EntityStore> playerRef, Store<EntityStore> store) {
             this.blockPos = blockPos;
             this.playerRef = playerRef;
+            this.store = store;
             this.startTime = System.currentTimeMillis();
             this.lastTimerUpdate = this.startTime;
         }
@@ -191,7 +193,7 @@ public class CometWaveManager {
 
     /**
      * Check for wave timeouts and destroy expired comets
-     * This should be called periodically (every 5 seconds) from the plugin
+     * This should be called periodically (every 1 second) from the plugin
      * NOTE: This runs on the scheduler thread, so we need to execute world
      * operations on WorldThread
      */
@@ -199,6 +201,7 @@ public class CometWaveManager {
         // Check all active waves for timeout
         long currentTime = System.currentTimeMillis();
         java.util.List<Vector3i> timedOutWaves = new java.util.ArrayList<>();
+        java.util.List<WaveData> activeWavesToRefresh = new java.util.ArrayList<>();
 
         for (Map.Entry<Vector3i, WaveData> entry : activeWaves.entrySet()) {
             WaveData waveData = entry.getValue();
@@ -212,7 +215,14 @@ public class CometWaveManager {
                 LOGGER.info("[checkTimeouts] TIMEOUT for wave at " + entry.getKey() +
                         " (elapsed=" + (elapsedTime / 1000) + "s)");
                 timedOutWaves.add(entry.getKey());
+            } else {
+                activeWavesToRefresh.add(waveData);
             }
+        }
+
+        // Keep countdown UI advancing even when no mobs die.
+        for (WaveData waveData : activeWavesToRefresh) {
+            refreshWaveCountdown(waveData);
         }
 
         // Destroy timed out waves - must execute on WorldThread
@@ -222,11 +232,11 @@ public class CometWaveManager {
                 continue;
 
             // Try to find a valid store to execute the cleanup
-            com.hypixel.hytale.component.Store<com.hypixel.hytale.server.core.universe.world.storage.EntityStore> store = null;
+            com.hypixel.hytale.component.Store<com.hypixel.hytale.server.core.universe.world.storage.EntityStore> store = waveData.store;
 
-            if (waveData.playerRef != null && waveData.playerRef.isValid()) {
+            if (store == null && waveData.playerRef != null && waveData.playerRef.isValid()) {
                 store = waveData.playerRef.getStore();
-            } else {
+            } else if (store == null) {
                 // Player dead/gone, try to use a mob ref
                 for (Ref<EntityStore> mobRef : waveData.spawnedMobs) {
                     if (mobRef != null && mobRef.isValid()) {
@@ -258,6 +268,44 @@ public class CometWaveManager {
                 activeWaves.remove(blockPos);
                 LOGGER.warning("Could not find valid store to clean up orphaned wave at " + blockPos);
             }
+        }
+    }
+
+    private void refreshWaveCountdown(WaveData waveData) {
+        if (waveData == null) {
+            return;
+        }
+
+        Store<EntityStore> store = waveData.store;
+        if (store == null && waveData.playerRef != null && waveData.playerRef.isValid()) {
+            store = waveData.playerRef.getStore();
+        } else if (store == null) {
+            for (Ref<EntityStore> mobRef : waveData.spawnedMobs) {
+                if (mobRef != null && mobRef.isValid()) {
+                    store = mobRef.getStore();
+                    break;
+                }
+            }
+        }
+
+        if (store == null) {
+            return;
+        }
+
+        try {
+            com.hypixel.hytale.server.core.universe.world.World world = ((com.hypixel.hytale.server.core.universe.world.storage.EntityStore) store
+                    .getExternalData()).getWorld();
+            final Store<EntityStore> finalStore = store;
+            final Ref<EntityStore> finalPlayerRef = waveData.playerRef;
+            final WaveData finalWaveData = waveData;
+            world.execute(() -> {
+                if (!activeWaves.containsKey(finalWaveData.blockPos)) {
+                    return;
+                }
+                updateWaveCountdown(finalStore, finalPlayerRef, finalWaveData);
+            });
+        } catch (Exception e) {
+            LOGGER.warning("Error refreshing countdown for wave at " + waveData.blockPos + ": " + e.getMessage());
         }
     }
 
@@ -480,7 +528,7 @@ public class CometWaveManager {
         }
 
         Vector3d centerPos = new Vector3d(blockPos.x + 0.5, blockPos.y + 1, blockPos.z + 0.5);
-        WaveData waveData = new WaveData(blockPos, playerRef);
+        WaveData waveData = new WaveData(blockPos, playerRef, store);
         activeWaves.put(blockPos, waveData);
 
         // Select theme and get mob list based on tier.
@@ -516,6 +564,8 @@ public class CometWaveManager {
 
         if (mobList == null || mobList.length == 0) {
             LOGGER.warning("No mobs available for tier " + tier.getName() + " theme " + themeId);
+            resolveWaveWithoutSpawns(store, playerRef, waveData,
+                    "Wave 1 has no spawnable mobs for theme '" + themeId + "' at tier " + tier.getName() + ".");
             return;
         }
 
@@ -665,6 +715,11 @@ public class CometWaveManager {
     }
 
     public void updateWaveCountdown(Store<EntityStore> store, Ref<EntityStore> playerRef, WaveData waveData) {
+        if (store == null) {
+            LOGGER.warning("Cannot update wave countdown at " + waveData.blockPos + ": store is null");
+            return;
+        }
+
         // Attempt to re-find the player if their reference is invalid (e.g. died and
         // respawned)
         Ref<EntityStore> currentPlayerRef = playerRef;
@@ -700,21 +755,9 @@ public class CometWaveManager {
 
         // Count remaining mobs - check for DeathComponent (more reliable than
         // EntityRemoveEvent)
-        // Remove dead mobs (those with DeathComponent) and invalid refs
+        // Remove dead mobs (supports DeathComponent and health-based death states).
         int beforeCleanup = waveData.spawnedMobs.size();
-        waveData.spawnedMobs.removeIf(ref -> {
-            if (ref == null || !ref.isValid()) {
-                return true; // Remove invalid refs
-            }
-            // Check if entity has DeathComponent (is dead)
-            com.hypixel.hytale.server.core.modules.entity.damage.DeathComponent deathComponent = store.getComponent(ref,
-                    com.hypixel.hytale.server.core.modules.entity.damage.DeathComponent.getComponentType());
-            if (deathComponent != null) {
-                LOGGER.info("Found dead mob in wave at " + waveData.blockPos);
-                return true; // Remove dead mobs
-            }
-            return false; // Keep alive mobs
-        });
+        waveData.spawnedMobs.removeIf(ref -> isTrackedMobDead(store, ref));
         int afterCleanup = waveData.spawnedMobs.size();
         if (beforeCleanup != afterCleanup) {
             LOGGER.info("Cleaned up " + (beforeCleanup - afterCleanup) + " dead/invalid mob refs");
@@ -723,18 +766,8 @@ public class CometWaveManager {
         // Count remaining alive mobs
         int remaining = 0;
         for (Ref<EntityStore> mobRef : waveData.spawnedMobs) {
-            if (mobRef != null && mobRef.isValid()) {
-                // Double-check it's not dead
-                com.hypixel.hytale.server.core.modules.entity.damage.DeathComponent deathComponent = store.getComponent(
-                        mobRef, com.hypixel.hytale.server.core.modules.entity.damage.DeathComponent.getComponentType());
-                if (deathComponent == null) {
-                    // Not dead, check if it's still an NPC
-                    com.hypixel.hytale.server.npc.entities.NPCEntity npc = store.getComponent(mobRef,
-                            com.hypixel.hytale.server.npc.entities.NPCEntity.getComponentType());
-                    if (npc != null) {
-                        remaining++;
-                    }
-                }
+            if (!isTrackedMobDead(store, mobRef)) {
+                remaining++;
             }
         }
 
@@ -782,13 +815,12 @@ public class CometWaveManager {
         int remainingSeconds = (int) (remainingTime / 1000);
         String timeText = remainingSeconds + "s";
 
-        // Always update when mob count changes (real-time), or update timer every 5
-        // seconds
+        // Always update when mob count changes (real-time), or update timer every second
         long timeSinceLastUpdate = currentTime - waveData.lastTimerUpdate;
-        boolean shouldUpdateTimer = mobCountChanged || (timeSinceLastUpdate >= 5000);
+        boolean shouldUpdateTimer = mobCountChanged || (timeSinceLastUpdate >= 1000);
 
         if (shouldUpdateTimer) {
-            // Update last timer update time (always, so 5s periodic logic works)
+            // Update last timer update time (always, so periodic logic works)
             waveData.lastTimerUpdate = currentTime;
 
             // Only update title if player is available (dead players have null PlayerRef)
@@ -849,9 +881,60 @@ public class CometWaveManager {
                 completeWave(store, playerRefComponent, waveData);
             }
         }
-        // Note: Timer updates when mobs die (frequent) or when 5 seconds have passed
-        // (checked above)
-        // No periodic scheduling to avoid lag - updates happen naturally when mobs die
+        // Note: Timer updates when mobs die (real-time) and via the periodic
+        // checkTimeouts refresh pass.
+    }
+
+    private boolean isTrackedMobDead(Store<EntityStore> store, Ref<EntityStore> mobRef) {
+        if (mobRef == null || !mobRef.isValid()) {
+            return true;
+        }
+
+        try {
+            com.hypixel.hytale.server.core.modules.entity.damage.DeathComponent deathComponent = store.getComponent(mobRef,
+                    com.hypixel.hytale.server.core.modules.entity.damage.DeathComponent.getComponentType());
+            if (deathComponent != null) {
+                return true;
+            }
+
+            // If a compatibility mod swapped this away from an NPC archetype, stop tracking it.
+            com.hypixel.hytale.server.npc.entities.NPCEntity npc = store.getComponent(
+                    mobRef,
+                    com.hypixel.hytale.server.npc.entities.NPCEntity.getComponentType());
+            if (npc == null) {
+                return true;
+            }
+
+            // Some combat mods can keep entities alive without DeathComponent; treat <= 0 HP as dead.
+            com.hypixel.hytale.server.core.modules.entitystats.EntityStatMap statMap = store.getComponent(
+                    mobRef,
+                    com.hypixel.hytale.server.core.modules.entitystats.EntityStatMap.getComponentType());
+            if (statMap != null) {
+                int healthIndex = com.hypixel.hytale.server.core.modules.entitystats.asset.EntityStatType.getAssetMap()
+                        .getIndex("Health");
+                if (healthIndex >= 0 && statMap.get(healthIndex).get() <= 0.01f) {
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.fine("Failed dead-check for tracked mob: " + e.getMessage());
+        }
+
+        return false;
+    }
+
+    private java.util.UUID getEntityUuid(Store<EntityStore> store, Ref<EntityStore> ref) {
+        if (store == null || ref == null || !ref.isValid()) {
+            return null;
+        }
+        try {
+            com.hypixel.hytale.server.core.entity.UUIDComponent uuidComponent = store.getComponent(
+                    ref,
+                    com.hypixel.hytale.server.core.entity.UUIDComponent.getComponentType());
+            return uuidComponent != null ? uuidComponent.getUuid() : null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /**
@@ -1011,6 +1094,8 @@ public class CometWaveManager {
         String[] mobList = WaveThemeProvider.getMobListForWave(tier, themeId, waveIndex);
         if (mobList == null || mobList.length == 0) {
             LOGGER.warning("No mobs found for wave " + waveData.currentWave + " in theme " + themeId);
+            resolveWaveWithoutSpawns(store, playerRef, waveData,
+                    "Normal wave " + waveData.currentWave + " has no spawnable mobs.");
             return;
         }
 
@@ -1155,9 +1240,18 @@ public class CometWaveManager {
         // Get bosses for this specific wave
         java.util.List<String> bosses = WaveThemeProvider.getBossesForWave(tier, themeId, waveIndex);
         if (bosses == null || bosses.isEmpty()) {
-            LOGGER.warning("No bosses configured for theme '" + themeId + "' wave index " + waveIndex
-                    + " at tier " + tier.getName());
-            return;
+            java.util.List<String> fallbackBosses = WaveThemeProvider.getBossesForTheme(tier, themeId);
+            if (fallbackBosses != null && !fallbackBosses.isEmpty()) {
+                bosses = fallbackBosses;
+                LOGGER.warning("No bosses configured for theme '" + themeId + "' wave index " + waveIndex
+                        + "; falling back to theme-level bosses at tier " + tier.getName());
+            } else {
+                LOGGER.warning("No bosses configured for theme '" + themeId + "' wave index " + waveIndex
+                        + " at tier " + tier.getName());
+                resolveWaveWithoutSpawns(store, playerRef, waveData,
+                        "Boss wave " + waveData.currentWave + " has no configured bosses.");
+                return;
+            }
         }
 
         LOGGER.info("Spawning " + bosses.size() + " boss(es) for wave " + waveData.currentWave);
@@ -1228,6 +1322,29 @@ public class CometWaveManager {
         // Start tracking and force immediate title update
         waveData.lastTimerUpdate = 0;
         updateWaveCountdown(store, playerRef, waveData);
+    }
+
+    private void resolveWaveWithoutSpawns(Store<EntityStore> store, Ref<EntityStore> playerRef, WaveData waveData,
+            String reason) {
+        if (waveData == null) {
+            return;
+        }
+
+        LOGGER.warning(reason + " Continuing progression without spawned entities.");
+        waveData.spawnedMobs.clear();
+        waveData.initialSpawnCount = 0;
+        waveData.remainingCount = 0;
+        waveData.previousRemainingCount = 0;
+        waveData.lastTimerUpdate = 0;
+
+        Store<EntityStore> effectiveStore = store != null ? store : waveData.store;
+        if (effectiveStore == null) {
+            LOGGER.warning("Unable to progress empty wave at " + waveData.blockPos + ": store is unavailable.");
+            return;
+        }
+
+        Ref<EntityStore> effectivePlayerRef = playerRef != null ? playerRef : waveData.playerRef;
+        updateWaveCountdown(effectiveStore, effectivePlayerRef, waveData);
     }
 
     /**
@@ -1506,6 +1623,8 @@ public class CometWaveManager {
     public void handleMobDeath(
             com.hypixel.hytale.component.Ref<com.hypixel.hytale.server.core.universe.world.storage.EntityStore> mobRef) {
         LOGGER.info("[CometWaveManager] handleMobDeath called! Checking " + activeWaves.size() + " active waves...");
+        Store<EntityStore> eventStore = (mobRef != null && mobRef.isValid()) ? mobRef.getStore() : null;
+        java.util.UUID deadMobUuid = getEntityUuid(eventStore, mobRef);
 
         // Check all active waves to see if this mob belongs to any of them
         for (Map.Entry<com.hypixel.hytale.math.vector.Vector3i, WaveData> entry : activeWaves.entrySet()) {
@@ -1519,8 +1638,18 @@ public class CometWaveManager {
                 Ref<EntityStore> ref = waveData.spawnedMobs.get(i);
                 // Check if refs match (same entity) - use == for reference equality or check if
                 // they point to same entity
-                if (ref != null && (ref == mobRef || ref.equals(mobRef) ||
-                        (ref.isValid() && mobRef.isValid() && ref.getIndex() == mobRef.getIndex()))) {
+                boolean sameRef = ref != null && (ref == mobRef || ref.equals(mobRef) ||
+                        (mobRef != null && ref.isValid() && mobRef.isValid() && ref.getIndex() == mobRef.getIndex()));
+
+                boolean sameUuid = false;
+                if (!sameRef && deadMobUuid != null && ref != null) {
+                    Store<EntityStore> compareStore = waveData.store != null ? waveData.store
+                            : (ref.isValid() ? ref.getStore() : eventStore);
+                    java.util.UUID trackedUuid = getEntityUuid(compareStore, ref);
+                    sameUuid = deadMobUuid.equals(trackedUuid);
+                }
+
+                if (sameRef || sameUuid) {
                     found = true;
                     waveData.spawnedMobs.remove(i);
                     LOGGER.info("[CometWaveManager] Mob died for wave at " + entry.getKey() + " (removed from list, " +
@@ -1535,8 +1664,13 @@ public class CometWaveManager {
                 com.hypixel.hytale.component.Store<com.hypixel.hytale.server.core.universe.world.storage.EntityStore> store = waveData.playerRef != null
                         && waveData.playerRef.isValid()
                                 ? waveData.playerRef.getStore()
-                                : mobRef.getStore();
-                updateWaveCountdown(store, waveData.playerRef, waveData);
+                                : ((mobRef != null && mobRef.isValid()) ? mobRef.getStore() : waveData.store);
+                if (store != null) {
+                    updateWaveCountdown(store, waveData.playerRef, waveData);
+                } else {
+                    LOGGER.warning("Could not update wave countdown after mob death at " + entry.getKey()
+                            + ": store unavailable");
+                }
                 return; // Found and handled, exit
             }
         }

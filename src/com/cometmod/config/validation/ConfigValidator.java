@@ -32,6 +32,7 @@ public final class ConfigValidator {
 
         validateTopLevelBlocks(json, report);
         validateSpawnSettings(json, report);
+        validateClaimProtect(json, report);
         validateThemesSchema(json, report);
         validateTierBlocks(json, report);
 
@@ -152,6 +153,29 @@ public final class ConfigValidator {
                 String worldName = worldNames.get(i);
                 if (worldName == null || worldName.trim().isEmpty()) {
                     report.warn("spawnSettings.disabledWorlds[" + i + "] is blank and will be ignored.");
+                }
+            }
+        }
+    }
+
+    private static void validateClaimProtect(String json, ConfigValidationReport report) {
+        String claimProtect = extractJsonObject(json, "claimProtect");
+        if (claimProtect == null) {
+            return;
+        }
+
+        String providers = extractJsonArray(claimProtect, "providers");
+        if (claimProtect.contains("\"providers\"") && providers == null) {
+            report.error("claimProtect.providers must be an array of provider-name strings.");
+            return;
+        }
+
+        if (providers != null) {
+            List<String> providerNames = extractStringArray(providers);
+            for (int i = 0; i < providerNames.size(); i++) {
+                String providerName = providerNames.get(i);
+                if (providerName == null || providerName.trim().isEmpty()) {
+                    report.warn("claimProtect.providers[" + i + "] is blank and will be ignored.");
                 }
             }
         }

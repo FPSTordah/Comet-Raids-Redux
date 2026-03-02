@@ -2,6 +2,7 @@ package com.cometmod.commands;
 
 import com.cometmod.*;
 import com.cometmod.commands.*;
+import com.cometmod.integration.ClaimProtectionGuard;
 import com.cometmod.services.*;
 import com.cometmod.spawn.*;
 import com.cometmod.systems.*;
@@ -16,6 +17,7 @@ import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import javax.annotation.Nonnull;
+import java.util.List;
 import java.util.logging.Logger;
 
 /**
@@ -69,6 +71,12 @@ public class CometReloadCommand extends AbstractWorldCommand {
             sb.append("  - Distance: ").append(config.minSpawnDistance).append("-").append(config.maxSpawnDistance)
                     .append(" blocks\n");
             sb.append("  - Despawn: ").append(config.despawnTimeMinutes).append(" min\n");
+            List<String> activeClaimProviders = ClaimProtectionGuard.getResolvedProviderKeys(config);
+            sb.append("Claim Protect: enabled=").append(config.isClaimProtectEnabled())
+                    .append(", autoDetect=").append(config.isClaimProtectAutoDetectProviders())
+                    .append(", activeProviders=")
+                    .append(activeClaimProviders.isEmpty() ? "none" : String.join(", ", activeClaimProviders))
+                    .append("\n");
             sb.append("Themes: ").append(config.getThemeCount()).append(" loaded\n");
             sb.append("Fixed Spawns: ").append(fixedSpawnCount).append(" configured");
 

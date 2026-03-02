@@ -28,6 +28,10 @@ public final class WorldProtectRegionGuard {
     private WorldProtectRegionGuard() {
     }
 
+    public static boolean isAvailable() {
+        return getRegionService() != null;
+    }
+
     /**
      * Returns true if comet spawn is allowed at the location.
      * If integration is disabled or WorldProtect is unavailable, returns true.
@@ -37,11 +41,11 @@ public final class WorldProtectRegionGuard {
             return true;
         }
 
-        syncKnownRegionsNow(config);
-
         if (!config.isProtectedZoneSpawnRulesEnabled()) {
             return true;
         }
+
+        syncKnownRegionsNow(config);
 
         String regionId = getPrimaryRegionIdAt(world, x, y, z);
         if (regionId == null || regionId.isBlank() || isGlobalRegion(regionId)) {
@@ -49,6 +53,15 @@ public final class WorldProtectRegionGuard {
         }
 
         return config.isProtectedRegionSpawnAllowed(regionId);
+    }
+
+    /**
+     * Returns true when the given location is inside a concrete WorldProtect region.
+     * Global/virtual regions do not count as claimed.
+     */
+    public static boolean isClaimedAt(World world, int x, int y, int z) {
+        String regionId = getPrimaryRegionIdAt(world, x, y, z);
+        return regionId != null && !regionId.isBlank() && !isGlobalRegion(regionId);
     }
 
     /**

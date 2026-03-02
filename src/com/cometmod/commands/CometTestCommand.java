@@ -71,9 +71,15 @@ public class CometTestCommand extends AbstractWorldCommand {
             LOGGER.info("Test command: Simulating spawn for player " + player.getDisplayName() + " in zone " + zoneName);
             
             // Trigger spawn immediately (spawnForPlayer handles world.execute internally)
-            spawnTask.spawnForPlayer(player);
-            
-            context.sendMessage(Message.raw("Comet spawn triggered! Check the sky!"));
+            spawnTask.spawnForPlayerForTest(player, result -> {
+                switch (result) {
+                    case SPAWNED -> context.sendMessage(Message.raw("Comet spawn triggered! Check the sky!"));
+                    case NO_SAFE_LOCATION -> context.sendMessage(Message.raw("No safe location"));
+                    case SKIPPED_NO_TIER -> context.sendMessage(Message.raw("No spawn chances configured for this zone"));
+                    case SKIPPED_WORLD_DISABLED -> context.sendMessage(Message.raw("Comet raids are disabled in this world"));
+                    default -> context.sendMessage(Message.raw("Failed to spawn comet"));
+                }
+            });
             
         } catch (Exception e) {
             LOGGER.warning("Error in test command: " + e.getMessage());

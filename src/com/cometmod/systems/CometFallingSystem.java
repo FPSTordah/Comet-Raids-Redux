@@ -19,6 +19,7 @@ import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.chunk.WorldChunk;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.core.entity.UUIDComponent;
+import com.cometmod.integration.ClaimProtectionGuard;
 import com.cometmod.integration.WorldProtectRegionGuard;
 
 import java.util.HashMap;
@@ -337,11 +338,11 @@ public class CometFallingSystem {
             Store<EntityStore> store, World targetWorld, UUID ownerUUID, int zoneId) {
         try {
             CometConfig config = CometConfig.getInstance();
-            if (!WorldProtectRegionGuard.canSpawnAt(targetWorld, targetBlockPos.x, targetBlockPos.y, targetBlockPos.z,
+            if (!ClaimProtectionGuard.canSpawnAt(targetWorld, targetBlockPos.x, targetBlockPos.y, targetBlockPos.z,
                     config)) {
                 String regionId = WorldProtectRegionGuard.getPrimaryRegionIdAt(targetWorld, targetBlockPos.x,
                         targetBlockPos.y, targetBlockPos.z);
-                LOGGER.info("Comet spawn blocked by protected-zone rules at " + targetBlockPos +
+                LOGGER.info("Comet spawn blocked by claim/protected-zone rules at " + targetBlockPos +
                         (regionId != null ? " (region: " + regionId + ")" : ""));
                 return;
             }
@@ -413,6 +414,12 @@ public class CometFallingSystem {
     public void spawnCometBlock(World world, Vector3i blockPos, Store<EntityStore> store, CometTier tier,
             String themeId, UUID ownerUUID, int zoneId) {
         try {
+            CometConfig config = CometConfig.getInstance();
+            if (!ClaimProtectionGuard.canSpawnAt(world, blockPos.x, blockPos.y, blockPos.z, config)) {
+                LOGGER.info("Comet block placement blocked by claim/protected-zone rules at " + blockPos);
+                return;
+            }
+
             // Get chunk
             long chunkIndex = com.hypixel.hytale.math.util.ChunkUtil.indexChunkFromBlock(
                     blockPos.x, blockPos.z);

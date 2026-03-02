@@ -51,8 +51,7 @@ public class FixedSpawnManager {
 
         File file = resolveConfigFile();
         if (!file.exists()) {
-            LOGGER.info("Fixed spawn file not found at " + file.getAbsolutePath() + " (continuing with 0 points)");
-            return;
+            createDefaultFixedSpawnsFile(file);
         }
 
         try {
@@ -60,7 +59,17 @@ public class FixedSpawnManager {
             logValidationReport(ConfigValidator.validateFixedSpawns(json));
             String spawnsArray = extractJsonArray(json, "spawns");
             if (spawnsArray == null) {
-                LOGGER.warning("No spawns[] array found in fixed_spawns.json. Continuing with 0 points.");
+                String merged = mergeMissingSpawnsArray(json);
+                if (merged != null) {
+                    Files.writeString(file.toPath(), merged, StandardCharsets.UTF_8);
+                    LOGGER.info("Merged fixed_spawns.json on boot (added missing spawns[] key).");
+                    json = merged;
+                    spawnsArray = extractJsonArray(json, "spawns");
+                }
+            }
+
+            if (spawnsArray == null) {
+                LOGGER.warning("No spawns[] array found in fixed_spawns.json after merge attempt. Continuing with 0 points.");
                 return;
             }
 
@@ -89,6 +98,50 @@ public class FixedSpawnManager {
         } catch (Exception e) {
             LOGGER.warning("Failed to load fixed spawn file: " + e.getMessage());
         }
+    }
+
+    private void createDefaultFixedSpawnsFile(File file) {
+        try {
+            File parent = file.getParentFile();
+            if (parent != null && !parent.exists()) {
+                parent.mkdirs();
+            }
+
+            String defaultJson = "{\n  \"spawns\": []\n}\n";
+            Files.writeString(file.toPath(), defaultJson, StandardCharsets.UTF_8);
+            LOGGER.info("Created missing fixed_spawns.json on boot at " + file.getAbsolutePath());
+        } catch (Exception e) {
+            LOGGER.warning("Failed to create default fixed_spawns.json: " + e.getMessage());
+        }
+    }
+
+    private String mergeMissingSpawnsArray(String json) {
+        if (json == null) {
+            return null;
+        }
+        if (extractJsonArray(json, "spawns") != null) {
+            return json;
+        }
+
+        int firstBrace = json.indexOf('{');
+        int lastBrace = json.lastIndexOf('}');
+        if (firstBrace < 0 || lastBrace <= firstBrace) {
+            return null;
+        }
+
+        String inner = json.substring(firstBrace + 1, lastBrace).trim();
+        StringBuilder merged = new StringBuilder();
+        merged.append("{\n");
+        if (!inner.isEmpty()) {
+            merged.append(inner);
+            if (!inner.endsWith(",")) {
+                merged.append(",");
+            }
+            merged.append("\n");
+        }
+        merged.append("  \"spawns\": []\n");
+        merged.append("}\n");
+        return merged.toString();
     }
 
     private void logValidationReport(ConfigValidationReport report) {

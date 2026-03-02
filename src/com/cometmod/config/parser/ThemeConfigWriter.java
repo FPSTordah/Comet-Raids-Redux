@@ -132,7 +132,8 @@ public class ThemeConfigWriter {
                 despawnTimeMinutes, minSpawnDistance, maxSpawnDistance,
                 naturalSpawnsEnabled, globalComets, disabledWorlds,
                 themes, tierSettings, rewardSettings, zoneSpawnChances,
-                null, null, false, true, null);
+                null, null, false, true, null,
+                false, false, null);
     }
 
     /**
@@ -146,7 +147,8 @@ public class ThemeConfigWriter {
             Map<Integer, TierRewards> rewardSettings, Map<String, ZoneSpawnChances> zoneSpawnChances,
             Map<String, TierRewards> zoneBaseLootPools, Map<Integer, TierInheritanceWeights> tierInheritanceWeights,
             boolean protectedZoneRulesEnabled, boolean defaultInProtectedRegion,
-            Map<String, Boolean> regionOverrides) {
+            Map<String, Boolean> regionOverrides,
+            boolean claimProtectEnabled, boolean claimProtectAutoDetectProviders, List<String> claimProtectProviders) {
 
         StringBuilder sb = new StringBuilder();
         sb.append("{\n");
@@ -177,6 +179,9 @@ public class ThemeConfigWriter {
 
         // WorldProtect comet spawn rules
         writeProtectedZoneSpawnRules(sb, protectedZoneRulesEnabled, defaultInProtectedRegion, regionOverrides);
+
+        // Generic claim-protection providers
+        writeClaimProtectSettings(sb, claimProtectEnabled, claimProtectAutoDetectProviders, claimProtectProviders);
 
         // Tier settings section
         sb.append(INDENT).append("\"tierSettings\": {\n");
@@ -471,6 +476,17 @@ public class ThemeConfigWriter {
         sb.append(INDENT).append("},\n\n");
     }
 
+    private static void writeClaimProtectSettings(StringBuilder sb, boolean enabled, boolean autoDetectProviders,
+            List<String> providers) {
+        sb.append(INDENT).append("\"claimProtect\": {\n");
+        sb.append(INDENT).append(INDENT).append("\"enabled\": ").append(enabled).append(",\n");
+        sb.append(INDENT).append(INDENT).append("\"autoDetectProviders\": ").append(autoDetectProviders).append(",\n");
+        sb.append(INDENT).append(INDENT).append("\"providers\": ");
+        appendStringArrayInline(sb, sanitizeClaimProviderNames(providers));
+        sb.append("\n");
+        sb.append(INDENT).append("},\n\n");
+    }
+
     private static List<String> sanitizeWorldNames(List<String> worldNames) {
         if (worldNames == null || worldNames.isEmpty()) {
             return java.util.Collections.emptyList();
@@ -482,6 +498,25 @@ public class ThemeConfigWriter {
                 continue;
             }
             String trimmed = worldName.trim();
+            if (trimmed.isEmpty() || sanitized.contains(trimmed)) {
+                continue;
+            }
+            sanitized.add(trimmed);
+        }
+        return sanitized;
+    }
+
+    private static List<String> sanitizeClaimProviderNames(List<String> providerNames) {
+        if (providerNames == null || providerNames.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+
+        List<String> sanitized = new java.util.ArrayList<>();
+        for (String providerName : providerNames) {
+            if (providerName == null) {
+                continue;
+            }
+            String trimmed = providerName.trim();
             if (trimmed.isEmpty() || sanitized.contains(trimmed)) {
                 continue;
             }

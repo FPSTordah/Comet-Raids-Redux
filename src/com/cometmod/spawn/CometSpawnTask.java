@@ -14,10 +14,12 @@ import com.hypixel.hytale.server.core.universe.world.WorldMapTracker;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.component.Store;
 import com.cometmod.config.model.ZoneSpawnChances;
+import com.cometmod.integration.ClaimProtectionGuard;
 import com.cometmod.integration.WorldProtectRegionGuard;
 
 import java.util.*;
 import java.util.concurrent.ScheduledFuture;
+import java.util.function.Consumer;
 import java.util.logging.Logger;
 
 public class CometSpawnTask {
@@ -27,6 +29,18 @@ public class CometSpawnTask {
     // Retry configuration for world thread initialization
     private static final int MAX_RETRY_ATTEMPTS = 5;
     private static final long INITIAL_RETRY_DELAY_MS = 100L; // Start with 100ms delay
+    private static final int SPAWN_LOCATION_ATTEMPTS = 16;
+    private static final int EXTRA_LOCATION_RECHECKS = 2;
+    private static final double MIN_RECHECK_RELOCATION_DISTANCE = 64.0;
+
+    public enum SpawnResult {
+        SPAWNED,
+        NO_SAFE_LOCATION,
+        SKIPPED_NO_TIER,
+        SKIPPED_NO_WORLD,
+        SKIPPED_WORLD_DISABLED,
+        ERROR
+    }
     
     // Spawn timing configuration
     private int minDelaySeconds = 120;  // 2 minutes minimum
@@ -120,7 +134,9 @@ public class CometSpawnTask {
     private void checkAndSpawn() {
         try {
             CometConfig config = CometConfig.getInstance();
-            WorldProtectRegionGuard.syncKnownRegions(config);
+            if (config != null && config.isProtectedZoneSpawnRulesEnabled()) {
+                WorldProtectRegionGuard.syncKnownRegions(config);
+            }
 
             // Check if natural spawns are enabled
             if (config != null && !config.naturalSpawnsEnabled) {
@@ -173,10 +189,18 @@ public class CometSpawnTask {
     }
     
     public void spawnForPlayer(Player player) {
-        spawnForPlayerWithRetry(player, 0);
+        spawnForPlayer(player, null);
     }
 
-    private void spawnForPlayerWithRetry(Player player, int attempt) {
+    public void spawnForPlayerForTest(Player player, Consumer<SpawnResult> callback) {
+        spawnForPlayer(player, callback);
+    }
+
+    private void spawnForPlayer(Player player, Consumer<SpawnResult> callback) {
+        spawnForPlayerWithRetry(player, 0, callback);
+    }
+
+    private void spawnForPlayerWithRetry(Player player, int attempt, Consumer<SpawnResult> callback) {
         try {
             // Get player's current zone
             WorldMapTracker tracker = player.getWorldMapTracker();
@@ -196,23 +220,27 @@ public class CometSpawnTask {
             CometTier tier = selectTierForZone(zoneId);
             if (tier == null) {
                 LOGGER.info("Skipping natural comet spawn: no configured tier chances for zone " + zoneId);
+                finishSpawn(callback, SpawnResult.SKIPPED_NO_TIER);
                 return;
             }
             World currentWorld = player.getWorld();
             if (currentWorld == null) {
                 LOGGER.warning("Player " + player.getDisplayName() + " is not in any world, cannot spawn comet");
+                finishSpawn(callback, SpawnResult.SKIPPED_NO_WORLD);
                 return;
             }
 
             CometConfig config = CometConfig.getInstance();
             if (config != null && !config.isRaidEnabledInWorld(currentWorld)) {
+                finishSpawn(callback, SpawnResult.SKIPPED_WORLD_DISABLED);
                 return;
             }
             
             // Try to execute spawn logic on world thread with retry mechanism
             try {
                 currentWorld.execute(() -> {
-                    executeSpawnLogic(player, tier, zoneId);
+                    SpawnResult result = executeSpawnLogic(player, tier, zoneId);
+                    finishSpawn(callback, result);
                 });
                 // Success! No retry needed
             } catch (Exception e) {
@@ -239,64 +267,56 @@ public class CometSpawnTask {
                     if (attempt < MAX_RETRY_ATTEMPTS) {
                         long delayMs = INITIAL_RETRY_DELAY_MS * (1L << attempt);
                         com.hypixel.hytale.server.core.HytaleServer.SCHEDULED_EXECUTOR.schedule(
-                            () -> spawnForPlayerWithRetry(player, attempt + 1),
+                            () -> spawnForPlayerWithRetry(player, attempt + 1, callback),
                             delayMs,
                             java.util.concurrent.TimeUnit.MILLISECONDS
                         );
+                    } else {
+                        finishSpawn(callback, SpawnResult.ERROR);
                     }
                 } else {
                     LOGGER.warning("Error spawning comet: " + e.getMessage());
+                    finishSpawn(callback, SpawnResult.ERROR);
                 }
             }
             
         } catch (Exception e) {
             LOGGER.warning("Error in spawnForPlayer: " + e.getMessage());
             e.printStackTrace();
+            finishSpawn(callback, SpawnResult.ERROR);
         }
     }
-    
-    private void executeSpawnLogic(Player player, CometTier tier, int zoneId) {
+
+    private void finishSpawn(Consumer<SpawnResult> callback, SpawnResult result) {
+        if (callback != null) {
+            callback.accept(result);
+        }
+    }
+
+    private SpawnResult executeSpawnLogic(Player player, CometTier tier, int zoneId) {
         try {
             World currentWorld = player.getWorld();
-            if (currentWorld == null) return;
+            if (currentWorld == null) return SpawnResult.SKIPPED_NO_WORLD;
             CometConfig config = CometConfig.getInstance();
-            if (config != null && !config.isRaidEnabledInWorld(currentWorld)) return;
+            if (config != null && !config.isRaidEnabledInWorld(currentWorld)) return SpawnResult.SKIPPED_WORLD_DISABLED;
 
             Store<EntityStore> currentStore = currentWorld.getEntityStore().getStore();
-            if (currentStore == null) return;
+            if (currentStore == null) return SpawnResult.ERROR;
             
             com.hypixel.hytale.component.Ref<EntityStore> playerRef = player.getReference();
-            if (playerRef == null || !playerRef.isValid()) return;
+            if (playerRef == null || !playerRef.isValid()) return SpawnResult.ERROR;
 
             com.hypixel.hytale.server.core.modules.entity.component.TransformComponent transform =
                 currentStore.getComponent(playerRef,
                     com.hypixel.hytale.server.core.modules.entity.component.TransformComponent.getComponentType());
-            if (transform == null) return;
+            if (transform == null) return SpawnResult.ERROR;
 
             com.hypixel.hytale.math.vector.Vector3d playerPos = transform.getPosition();
             Random random = new Random();
-            com.hypixel.hytale.math.vector.Vector3i targetBlockPos = null;
+            com.hypixel.hytale.math.vector.Vector3i targetBlockPos =
+                    findSpawnTargetWithRechecks(currentWorld, playerPos, config, random);
 
-            for (int attempt = 0; attempt < 16; attempt++) {
-                double angle = random.nextDouble() * 2 * Math.PI;
-                double distance = minSpawnDistance + random.nextDouble() * (maxSpawnDistance - minSpawnDistance);
-
-                int spawnX = (int)(playerPos.x + Math.cos(angle) * distance);
-                int spawnZ = (int)(playerPos.z + Math.sin(angle) * distance);
-                int spawnY = findGroundLevel(currentWorld, spawnX, spawnZ, (int)playerPos.y);
-
-                if (spawnY == -1) continue;
-                if (isInWater(currentWorld, spawnX, spawnY, spawnZ) || isInWater(currentWorld, spawnX, spawnY + 1, spawnZ)) continue;
-
-                targetBlockPos = new com.hypixel.hytale.math.vector.Vector3i(spawnX, spawnY + 1, spawnZ);
-                if (!WorldProtectRegionGuard.canSpawnAt(currentWorld, targetBlockPos.x, targetBlockPos.y, targetBlockPos.z, config)) {
-                    targetBlockPos = null;
-                    continue;
-                }
-                break;
-            }
-
-            if (targetBlockPos == null) return;
+            if (targetBlockPos == null) return SpawnResult.NO_SAFE_LOCATION;
 
             // Register zone for this comet at its landing position
             CometWaveManager waveManager = CometModPlugin.getWaveManager();
@@ -316,7 +336,7 @@ public class CometSpawnTask {
                 takeCommandBufferMethod.setAccessible(true);
                 commandBuffer = (com.hypixel.hytale.component.CommandBuffer<EntityStore>) takeCommandBufferMethod.invoke(currentStore);
             } catch (Exception e) {
-                return;
+                return SpawnResult.ERROR;
             }
 
             java.util.UUID ownerUUID = player.getUuid();
@@ -373,9 +393,68 @@ public class CometSpawnTask {
                 // Ignore
             }
             
+            return SpawnResult.SPAWNED;
         } catch (Exception e) {
             LOGGER.warning("Error spawning comet: " + e.getMessage());
+            return SpawnResult.ERROR;
         }
+    }
+
+    private com.hypixel.hytale.math.vector.Vector3i findSpawnTargetWithRechecks(
+            World currentWorld,
+            com.hypixel.hytale.math.vector.Vector3d playerPos,
+            CometConfig config,
+            Random random) {
+
+        int centerX = (int) playerPos.x;
+        int centerZ = (int) playerPos.z;
+        int startY = (int) playerPos.y;
+
+        for (int recheck = 0; recheck <= EXTRA_LOCATION_RECHECKS; recheck++) {
+            com.hypixel.hytale.math.vector.Vector3i target =
+                    tryFindSpawnTargetNearCenter(currentWorld, centerX, centerZ, startY, config, random);
+            if (target != null) {
+                return target;
+            }
+
+            if (recheck < EXTRA_LOCATION_RECHECKS) {
+                double relocateAngle = random.nextDouble() * 2 * Math.PI;
+                double relocateDistance = Math.max(MIN_RECHECK_RELOCATION_DISTANCE, maxSpawnDistance * 2.0);
+                centerX = (int) (playerPos.x + Math.cos(relocateAngle) * relocateDistance);
+                centerZ = (int) (playerPos.z + Math.sin(relocateAngle) * relocateDistance);
+            }
+        }
+
+        return null;
+    }
+
+    private com.hypixel.hytale.math.vector.Vector3i tryFindSpawnTargetNearCenter(
+            World currentWorld,
+            int centerX,
+            int centerZ,
+            int startY,
+            CometConfig config,
+            Random random) {
+        for (int attempt = 0; attempt < SPAWN_LOCATION_ATTEMPTS; attempt++) {
+            double angle = random.nextDouble() * 2 * Math.PI;
+            double distance = minSpawnDistance + random.nextDouble() * (maxSpawnDistance - minSpawnDistance);
+
+            int spawnX = (int) (centerX + Math.cos(angle) * distance);
+            int spawnZ = (int) (centerZ + Math.sin(angle) * distance);
+            int spawnY = findGroundLevel(currentWorld, spawnX, spawnZ, startY);
+
+            if (spawnY == -1) continue;
+            if (isInWater(currentWorld, spawnX, spawnY, spawnZ) || isInWater(currentWorld, spawnX, spawnY + 1, spawnZ)) continue;
+
+            com.hypixel.hytale.math.vector.Vector3i targetBlockPos =
+                    new com.hypixel.hytale.math.vector.Vector3i(spawnX, spawnY + 1, spawnZ);
+            if (!ClaimProtectionGuard.canSpawnAt(currentWorld, targetBlockPos.x, targetBlockPos.y, targetBlockPos.z, config)) {
+                continue;
+            }
+            return targetBlockPos;
+        }
+
+        return null;
     }
 
     private int parseZoneId(String name) {

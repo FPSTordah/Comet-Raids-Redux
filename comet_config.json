@@ -518,5 +518,19 @@
     "enabled": false,
     "defaultInWorldProtectRegion": true,
     "regionOverrides": {}
+  },
+  "claimProtect": {
+    "enabled": false,
+    "autoDetectProviders": false,
+    "providers": [
+      "WorldProtect",
+      "HyperFactions",
+      "Hyfaction",
+      "SimpleClaims",
+      "WiFlowsClaims",
+      "UltimateFaction",
+      "ElbaphFactions",
+      "DeityLandProtection"
+    ]
   }
 }
