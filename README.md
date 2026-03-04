@@ -421,7 +421,8 @@ The config is fully JSON - just copy an existing theme, rename it, and start twe
 
 ## Version Notes
 
-- `v3.2.4`: Added DeityLandProtection claim integration.
+- `v3.3.0`: Added configurable comet chat and banner messages with placeholders, plus an in-game Voile documentation page for configuration help.
+- `v3.2.4`: Generic claim protection integration.
 - `v3.2.3`: Improved wave timer reliability, fixed stuck wave progression in edge cases, and improved kill-count tracking compatibility with mob/combat overhaul mods.
 - `manifest.json` controls runtime compatibility (`ServerVersion`).
 - `pom.xml` controls compile dependency (`hytale.server.version`).

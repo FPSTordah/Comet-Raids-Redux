@@ -81,6 +81,34 @@ public class CometConfig {
     // Global comets setting - if true, any player can trigger any comet (not just the owner)
     public boolean globalComets = false;
 
+    // Message templates (chat + banner) - configurable, BossArena style
+    // Placeholders are documented in the README section of the config
+    public String msgCometFallingTitle = "%tier% Comet Falling!";
+    public String msgCometFallingSubtitle = "Watch the sky!";
+    public String msgCometFallingChatCoords =
+            "%tier% Comet falling! Target: X=%x%, Y=%y%, Z=%z%";
+
+    public String msgWaveBossTitle = "Boss Wave %currentWave%/%totalWaves%";
+    public String msgWaveBossTitleNoCount = "Boss Wave!";
+    public String msgWaveBossSubtitle =
+            "Boss: %bossStatus% | Time: %time%";
+
+    public String msgWaveTitle =
+            "Wave %currentWave%/%totalWaves% - %theme%";
+    public String msgWaveTitleNoCount = "%theme% Incoming!";
+    public String msgWaveSubtitle =
+            "Mobs: %killed%/%total% | Time: %time%";
+
+    public String msgWaveFailedTitle = "Wave Failed!";
+    public String msgWaveFailedSubtitle = "Time's Up!";
+
+    public String msgWaveCompleteTitle = "Wave Complete!";
+    public String msgWaveCompleteSubtitle = "Loot Dropped!";
+
+    public String msgWaveCompleteChatHeaderPrefix = "[Comet] ";
+    public String msgWaveCompleteChatHeader = "Wave Complete! Your rewards:";
+    public String msgWaveCompleteChatItemPrefix = " - ";
+
     // If non-empty, comet raids are disabled in the listed world names (case-insensitive).
     private final List<String> disabledWorlds = new ArrayList<>();
     private final Set<String> disabledWorldLookup = new LinkedHashSet<>();
@@ -361,6 +389,49 @@ public class CometConfig {
                 config.setDisabledWorlds(extractStringArray(disabledWorldsArray));
             }
 
+            // Parse optional message templates (under top-level "messages" object if present)
+            String messagesBlock = extractJsonObject(json, "messages");
+            String messageSource = messagesBlock != null ? messagesBlock : json;
+
+            String v;
+            v = com.cometmod.config.parser.ConfigJson.extractStringValue(messageSource, "msgCometFallingTitle");
+            if (v != null && !v.isEmpty()) config.msgCometFallingTitle = v;
+            v = com.cometmod.config.parser.ConfigJson.extractStringValue(messageSource, "msgCometFallingSubtitle");
+            if (v != null && !v.isEmpty()) config.msgCometFallingSubtitle = v;
+            v = com.cometmod.config.parser.ConfigJson.extractStringValue(messageSource, "msgCometFallingChatCoords");
+            if (v != null && !v.isEmpty()) config.msgCometFallingChatCoords = v;
+
+            v = com.cometmod.config.parser.ConfigJson.extractStringValue(messageSource, "msgWaveBossTitle");
+            if (v != null && !v.isEmpty()) config.msgWaveBossTitle = v;
+            v = com.cometmod.config.parser.ConfigJson.extractStringValue(messageSource, "msgWaveBossTitleNoCount");
+            if (v != null && !v.isEmpty()) config.msgWaveBossTitleNoCount = v;
+            v = com.cometmod.config.parser.ConfigJson.extractStringValue(messageSource, "msgWaveBossSubtitle");
+            if (v != null && !v.isEmpty()) config.msgWaveBossSubtitle = v;
+
+            v = com.cometmod.config.parser.ConfigJson.extractStringValue(messageSource, "msgWaveTitle");
+            if (v != null && !v.isEmpty()) config.msgWaveTitle = v;
+            v = com.cometmod.config.parser.ConfigJson.extractStringValue(messageSource, "msgWaveTitleNoCount");
+            if (v != null && !v.isEmpty()) config.msgWaveTitleNoCount = v;
+            v = com.cometmod.config.parser.ConfigJson.extractStringValue(messageSource, "msgWaveSubtitle");
+            if (v != null && !v.isEmpty()) config.msgWaveSubtitle = v;
+
+            v = com.cometmod.config.parser.ConfigJson.extractStringValue(messageSource, "msgWaveFailedTitle");
+            if (v != null && !v.isEmpty()) config.msgWaveFailedTitle = v;
+            v = com.cometmod.config.parser.ConfigJson.extractStringValue(messageSource, "msgWaveFailedSubtitle");
+            if (v != null && !v.isEmpty()) config.msgWaveFailedSubtitle = v;
+
+            v = com.cometmod.config.parser.ConfigJson.extractStringValue(messageSource, "msgWaveCompleteTitle");
+            if (v != null && !v.isEmpty()) config.msgWaveCompleteTitle = v;
+            v = com.cometmod.config.parser.ConfigJson.extractStringValue(messageSource, "msgWaveCompleteSubtitle");
+            if (v != null && !v.isEmpty()) config.msgWaveCompleteSubtitle = v;
+
+            v = com.cometmod.config.parser.ConfigJson.extractStringValue(messageSource, "msgWaveCompleteChatHeaderPrefix");
+            if (v != null && !v.isEmpty()) config.msgWaveCompleteChatHeaderPrefix = v;
+            v = com.cometmod.config.parser.ConfigJson.extractStringValue(messageSource, "msgWaveCompleteChatHeader");
+            if (v != null && !v.isEmpty()) config.msgWaveCompleteChatHeader = v;
+            v = com.cometmod.config.parser.ConfigJson.extractStringValue(messageSource, "msgWaveCompleteChatItemPrefix");
+            if (v != null && !v.isEmpty()) config.msgWaveCompleteChatItemPrefix = v;
+
             // Parse themes using ThemeConfigParser
             config.themes = ThemeConfigParser.parseThemes(json);
             config.themeList = new ArrayList<>(config.themes.values());
@@ -601,6 +672,57 @@ public class CometConfig {
         if (tierStatScaling == null) {
             tierStatScaling = new TierStatScalingConfig();
         }
+
+        // Ensure message templates are never null (they may be empty if the user really wants that)
+        if (msgCometFallingTitle == null) {
+            msgCometFallingTitle = "%tier% Comet Falling!";
+        }
+        if (msgCometFallingSubtitle == null) {
+            msgCometFallingSubtitle = "Watch the sky!";
+        }
+        if (msgCometFallingChatCoords == null) {
+            msgCometFallingChatCoords =
+                    "%tier% Comet falling! Target: X=%x%, Y=%y%, Z=%z%";
+        }
+        if (msgWaveBossTitle == null) {
+            msgWaveBossTitle = "Boss Wave %currentWave%/%totalWaves%";
+        }
+        if (msgWaveBossTitleNoCount == null) {
+            msgWaveBossTitleNoCount = "Boss Wave!";
+        }
+        if (msgWaveBossSubtitle == null) {
+            msgWaveBossSubtitle = "Boss: %bossStatus% | Time: %time%";
+        }
+        if (msgWaveTitle == null) {
+            msgWaveTitle = "Wave %currentWave%/%totalWaves% - %theme%";
+        }
+        if (msgWaveTitleNoCount == null) {
+            msgWaveTitleNoCount = "%theme% Incoming!";
+        }
+        if (msgWaveSubtitle == null) {
+            msgWaveSubtitle = "Mobs: %killed%/%total% | Time: %time%";
+        }
+        if (msgWaveFailedTitle == null) {
+            msgWaveFailedTitle = "Wave Failed!";
+        }
+        if (msgWaveFailedSubtitle == null) {
+            msgWaveFailedSubtitle = "Time's Up!";
+        }
+        if (msgWaveCompleteTitle == null) {
+            msgWaveCompleteTitle = "Wave Complete!";
+        }
+        if (msgWaveCompleteSubtitle == null) {
+            msgWaveCompleteSubtitle = "Loot Dropped!";
+        }
+        if (msgWaveCompleteChatHeaderPrefix == null) {
+            msgWaveCompleteChatHeaderPrefix = "[Comet] ";
+        }
+        if (msgWaveCompleteChatHeader == null) {
+            msgWaveCompleteChatHeader = "Wave Complete! Your rewards:";
+        }
+        if (msgWaveCompleteChatItemPrefix == null) {
+            msgWaveCompleteChatItemPrefix = " - ";
+        }
     }
 
     private String buildConfigJsonForPersistence() {
@@ -612,7 +734,13 @@ public class CometConfig {
                 zoneBaseLootPools, tierInheritanceWeights,
                 protectedZoneSpawnRulesEnabled, protectedZoneDefaultInProtectedRegion,
                 protectedZoneRegionOverrides,
-                claimProtectEnabled, claimProtectAutoDetectProviders, getClaimProtectProviders());
+                claimProtectEnabled, claimProtectAutoDetectProviders, getClaimProtectProviders(),
+                msgCometFallingTitle, msgCometFallingSubtitle, msgCometFallingChatCoords,
+                msgWaveBossTitle, msgWaveBossTitleNoCount, msgWaveBossSubtitle,
+                msgWaveTitle, msgWaveTitleNoCount, msgWaveSubtitle,
+                msgWaveFailedTitle, msgWaveFailedSubtitle,
+                msgWaveCompleteTitle, msgWaveCompleteSubtitle,
+                msgWaveCompleteChatHeaderPrefix, msgWaveCompleteChatHeader, msgWaveCompleteChatItemPrefix);
     }
 
     private static void syncConfigFilesOnBoot(CometConfig config, File configFile) {

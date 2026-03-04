@@ -133,7 +133,16 @@ public class ThemeConfigWriter {
                 naturalSpawnsEnabled, globalComets, disabledWorlds,
                 themes, tierSettings, rewardSettings, zoneSpawnChances,
                 null, null, false, true, null,
-                false, false, null);
+                false, false, null,
+                "%tier% Comet Falling!", "Watch the sky!",
+                "%tier% Comet falling! Target: X=%x%, Y=%y%, Z=%z%",
+                "Boss Wave %currentWave%/%totalWaves%", "Boss Wave!",
+                "Boss: %bossStatus% | Time: %time%",
+                "Wave %currentWave%/%totalWaves% - %theme%", "%theme% Incoming!",
+                "Mobs: %killed%/%total% | Time: %time%",
+                "Wave Failed!", "Time's Up!",
+                "Wave Complete!", "Loot Dropped!",
+                "[Comet] ", "Wave Complete! Your rewards:", " - ");
     }
 
     /**
@@ -148,7 +157,13 @@ public class ThemeConfigWriter {
             Map<String, TierRewards> zoneBaseLootPools, Map<Integer, TierInheritanceWeights> tierInheritanceWeights,
             boolean protectedZoneRulesEnabled, boolean defaultInProtectedRegion,
             Map<String, Boolean> regionOverrides,
-            boolean claimProtectEnabled, boolean claimProtectAutoDetectProviders, List<String> claimProtectProviders) {
+            boolean claimProtectEnabled, boolean claimProtectAutoDetectProviders, List<String> claimProtectProviders,
+            String msgCometFallingTitle, String msgCometFallingSubtitle, String msgCometFallingChatCoords,
+            String msgWaveBossTitle, String msgWaveBossTitleNoCount, String msgWaveBossSubtitle,
+            String msgWaveTitle, String msgWaveTitleNoCount, String msgWaveSubtitle,
+            String msgWaveFailedTitle, String msgWaveFailedSubtitle,
+            String msgWaveCompleteTitle, String msgWaveCompleteSubtitle,
+            String msgWaveCompleteChatHeaderPrefix, String msgWaveCompleteChatHeader, String msgWaveCompleteChatItemPrefix) {
 
         StringBuilder sb = new StringBuilder();
         sb.append("{\n");
@@ -250,6 +265,47 @@ public class ThemeConfigWriter {
             }
             sb.append("\n");
         }
+        sb.append(INDENT).append("},\n\n");
+
+        // Message templates section (chat + banner)
+        sb.append(INDENT).append("\"messages\": {\n");
+        sb.append(INDENT).append(INDENT).append("\"msgCometFallingTitle\": \"")
+                .append(escapeString(msgCometFallingTitle)).append("\",\n");
+        sb.append(INDENT).append(INDENT).append("\"msgCometFallingSubtitle\": \"")
+                .append(escapeString(msgCometFallingSubtitle)).append("\",\n");
+        sb.append(INDENT).append(INDENT).append("\"msgCometFallingChatCoords\": \"")
+                .append(escapeString(msgCometFallingChatCoords)).append("\",\n");
+
+        sb.append(INDENT).append(INDENT).append("\"msgWaveBossTitle\": \"")
+                .append(escapeString(msgWaveBossTitle)).append("\",\n");
+        sb.append(INDENT).append(INDENT).append("\"msgWaveBossTitleNoCount\": \"")
+                .append(escapeString(msgWaveBossTitleNoCount)).append("\",\n");
+        sb.append(INDENT).append(INDENT).append("\"msgWaveBossSubtitle\": \"")
+                .append(escapeString(msgWaveBossSubtitle)).append("\",\n");
+
+        sb.append(INDENT).append(INDENT).append("\"msgWaveTitle\": \"")
+                .append(escapeString(msgWaveTitle)).append("\",\n");
+        sb.append(INDENT).append(INDENT).append("\"msgWaveTitleNoCount\": \"")
+                .append(escapeString(msgWaveTitleNoCount)).append("\",\n");
+        sb.append(INDENT).append(INDENT).append("\"msgWaveSubtitle\": \"")
+                .append(escapeString(msgWaveSubtitle)).append("\",\n");
+
+        sb.append(INDENT).append(INDENT).append("\"msgWaveFailedTitle\": \"")
+                .append(escapeString(msgWaveFailedTitle)).append("\",\n");
+        sb.append(INDENT).append(INDENT).append("\"msgWaveFailedSubtitle\": \"")
+                .append(escapeString(msgWaveFailedSubtitle)).append("\",\n");
+
+        sb.append(INDENT).append(INDENT).append("\"msgWaveCompleteTitle\": \"")
+                .append(escapeString(msgWaveCompleteTitle)).append("\",\n");
+        sb.append(INDENT).append(INDENT).append("\"msgWaveCompleteSubtitle\": \"")
+                .append(escapeString(msgWaveCompleteSubtitle)).append("\",\n");
+
+        sb.append(INDENT).append(INDENT).append("\"msgWaveCompleteChatHeaderPrefix\": \"")
+                .append(escapeString(msgWaveCompleteChatHeaderPrefix)).append("\",\n");
+        sb.append(INDENT).append(INDENT).append("\"msgWaveCompleteChatHeader\": \"")
+                .append(escapeString(msgWaveCompleteChatHeader)).append("\",\n");
+        sb.append(INDENT).append(INDENT).append("\"msgWaveCompleteChatItemPrefix\": \"")
+                .append(escapeString(msgWaveCompleteChatItemPrefix)).append("\"\n");
         sb.append(INDENT).append("}\n");
 
         sb.append("}\n");

@@ -25,8 +25,7 @@ public final class ClaimProtectionGuard {
             "simpleclaims",
             "wiflowsclaims",
             "ultimatefaction",
-            "elbaphfactions",
-            "deitylandprotection");
+            "elbaphfactions");
 
     private ClaimProtectionGuard() {
     }
@@ -62,7 +61,6 @@ public final class ClaimProtectionGuard {
             case "wiflowsclaims" -> WiFlowsClaimsClaimGuard.isClaimedAt(world, x, y, z);
             case "ultimatefaction" -> UltimateFactionClaimGuard.isClaimedAt(world, x, y, z);
             case "elbaphfactions" -> ElbaphFactionsClaimGuard.isClaimedAt(world, x, y, z);
-            case "deitylandprotection" -> DeityLandProtectionClaimGuard.isClaimedAt(world, x, y, z);
             default -> {
                 warnUnknownProviderOnce(providerKey);
                 yield false;
@@ -103,7 +101,6 @@ public final class ClaimProtectionGuard {
             case "wiflowsclaims" -> WiFlowsClaimsClaimGuard.isAvailable();
             case "ultimatefaction" -> UltimateFactionClaimGuard.isAvailable();
             case "elbaphfactions" -> ElbaphFactionsClaimGuard.isAvailable();
-            case "deitylandprotection" -> DeityLandProtectionClaimGuard.isAvailable();
             default -> false;
         };
     }
@@ -128,7 +125,6 @@ public final class ClaimProtectionGuard {
             case "wiflowclaims", "wiflowclaim", "wiflowsclaim", "wiflowsclaims", "wiflows" -> "wiflowsclaims";
             case "ultimatefaction", "ultimatefactions", "ultimate", "tinkyfactions", "hytalefactions" -> "ultimatefaction";
             case "elbaphfaction", "elbaphfactions", "elbaph" -> "elbaphfactions";
-            case "deitylandprotection", "deityland", "deitylandclaims", "deityclaims" -> "deitylandprotection";
             default -> normalized;
         };
     }
@@ -136,7 +132,7 @@ public final class ClaimProtectionGuard {
     private static void warnUnknownProviderOnce(String providerKey) {
         if (warnedUnknownProviders.add(providerKey)) {
             LOGGER.warning("ClaimProtect provider '" + providerKey
-                    + "' is not supported yet. Supported providers: WorldProtect, HyperFactions, Hyfaction, SimpleClaims, WiFlowsClaims, UltimateFaction, ElbaphFactions, DeityLandProtection.");
+                    + "' is not supported yet. Supported providers: WorldProtect, HyperFactions, Hyfaction, SimpleClaims, WiFlowsClaims, UltimateFaction, ElbaphFactions.");
         }
     }
 }

@@ -3,7 +3,7 @@
     "Name": "Comet Reward Chest",
     "Description": "A shared reward chest spawned by a completed comet raid."
   },
-  "Icon": "Icons/ItemsGenerated/Comet_Reward_Chest.png",
+  "Icon": "Icons/ItemsGenerated/Comet_Bench.png",
   "Quality": "Rare",
   "MaxStack": 64,
   "Categories": [

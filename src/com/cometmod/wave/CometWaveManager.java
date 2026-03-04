@@ -832,20 +832,49 @@ public class CometWaveManager {
                 String themeId = cometThemes.get(waveData.blockPos);
                 boolean isBossWave = WaveThemeProvider.isWaveBoss(themeId, waveData.currentWaveIndex);
 
+                CometConfig cfg = CometConfig.getInstance();
+
                 if (isBossWave) {
                     // Boss wave display
-                    String waveLabel = waveData.totalWaveCount > 2
-                            ? "Boss Wave " + waveData.currentWave + "/" + waveData.totalWaveCount
-                            : "Boss Wave!";
+                    String titleTemplate = (cfg != null ? cfg.msgWaveBossTitle : "Boss Wave %currentWave%/%totalWaves%");
+                    String titleNoCountTemplate = (cfg != null ? cfg.msgWaveBossTitleNoCount : "Boss Wave!");
+                    String subtitleTemplate = (cfg != null ? cfg.msgWaveBossSubtitle : "Boss: %bossStatus% | Time: %time%");
+
+                    String waveLabelTemplate = waveData.totalWaveCount > 2 ? titleTemplate : titleNoCountTemplate;
+                    String waveLabel = waveLabelTemplate
+                            .replace("%currentWave%", Integer.toString(waveData.currentWave))
+                            .replace("%totalWaves%", Integer.toString(waveData.totalWaveCount))
+                            .replace("%theme%", waveData.themeName != null ? waveData.themeName : "");
+
+                    String bossStatus = remaining > 0 ? "Alive" : "Defeated";
+                    String secondaryText = subtitleTemplate
+                            .replace("%bossStatus%", bossStatus)
+                            .replace("%time%", timeText);
+
                     primaryTitle = Message.raw(waveLabel);
-                    secondaryTitle = Message.raw("Boss: " + (remaining > 0 ? "Alive" : "Defeated") + " | Time: " + timeText);
+                    secondaryTitle = Message.raw(secondaryText);
                 } else {
                     // Normal wave display
-                    String waveLabel = waveData.totalWaveCount > 2
-                            ? "Wave " + waveData.currentWave + "/" + waveData.totalWaveCount + " - " + waveData.themeName
-                            : waveData.themeName + " Incoming!";
+                    String titleTemplate = (cfg != null ? cfg.msgWaveTitle
+                            : "Wave %currentWave%/%totalWaves% - %theme%");
+                    String titleNoCountTemplate = (cfg != null ? cfg.msgWaveTitleNoCount
+                            : "%theme% Incoming!");
+                    String subtitleTemplate = (cfg != null ? cfg.msgWaveSubtitle
+                            : "Mobs: %killed%/%total% | Time: %time%");
+
+                    String waveLabelTemplate = waveData.totalWaveCount > 2 ? titleTemplate : titleNoCountTemplate;
+                    String waveLabel = waveLabelTemplate
+                            .replace("%currentWave%", Integer.toString(waveData.currentWave))
+                            .replace("%totalWaves%", Integer.toString(waveData.totalWaveCount))
+                            .replace("%theme%", waveData.themeName != null ? waveData.themeName : "");
+
+                    String secondaryText = subtitleTemplate
+                            .replace("%killed%", Integer.toString(killedMobs))
+                            .replace("%total%", Integer.toString(totalMobs))
+                            .replace("%time%", timeText);
+
                     primaryTitle = Message.raw(waveLabel);
-                    secondaryTitle = Message.raw("Mobs: " + killedMobs + "/" + totalMobs + " | Time: " + timeText);
+                    secondaryTitle = Message.raw(secondaryText);
                 }
 
                 LOGGER.info("Updating title: Wave=" + waveData.currentWave + "/" + waveData.totalWaveCount +
@@ -1005,8 +1034,12 @@ public class CometWaveManager {
                     EventTitleUtil.hideEventTitleFromPlayer(playerRefComponent, 0.0F);
 
                     // Show "Wave Failed!" message
-                    Message primaryTitle = Message.raw("Wave Failed!");
-                    Message secondaryTitle = Message.raw("Time's Up!");
+                    CometConfig cfg = CometConfig.getInstance();
+                    String titleTemplate = (cfg != null ? cfg.msgWaveFailedTitle : "Wave Failed!");
+                    String subtitleTemplate = (cfg != null ? cfg.msgWaveFailedSubtitle : "Time's Up!");
+
+                    Message primaryTitle = Message.raw(titleTemplate);
+                    Message secondaryTitle = Message.raw(subtitleTemplate);
 
                     EventTitleUtil.showEventTitleToPlayer(
                             playerRefComponent,
@@ -1370,8 +1403,12 @@ public class CometWaveManager {
         // Show completion title only when player is available (e.g. not dead)
         if (playerRef != null) {
             // 1. Show "Wave Complete!" as main title
-            Message primaryTitle = Message.raw("Wave Complete!");
-            Message secondaryTitle = Message.raw("Loot Dropped!");
+            CometConfig cfg = CometConfig.getInstance();
+            String titleTemplate = (cfg != null ? cfg.msgWaveCompleteTitle : "Wave Complete!");
+            String subtitleTemplate = (cfg != null ? cfg.msgWaveCompleteSubtitle : "Loot Dropped!");
+
+            Message primaryTitle = Message.raw(titleTemplate);
+            Message secondaryTitle = Message.raw(subtitleTemplate);
 
             EventTitleUtil.hideEventTitleFromPlayer(playerRef, 0.0F);
             EventTitleUtil.showEventTitleToPlayer(
@@ -1385,13 +1422,17 @@ public class CometWaveManager {
                     0.5F);
 
             // 2. Show Loot in Chat
+            String headerPrefix = (cfg != null ? cfg.msgWaveCompleteChatHeaderPrefix : "[Comet] ");
+            String headerText = (cfg != null ? cfg.msgWaveCompleteChatHeader : "Wave Complete! Your rewards:");
+
             Message header = Message.empty()
-                .insert(Message.raw("[Comet] ").color("#FFAA00"))
-                .insert(Message.raw("Wave Complete! Your rewards:").color("#FFFFFF"));
+                .insert(Message.raw(headerPrefix).color("#FFAA00"))
+                .insert(Message.raw(headerText).color("#FFFFFF"));
             playerRef.sendMessage(header);
+            String itemPrefix = (cfg != null ? cfg.msgWaveCompleteChatItemPrefix : " - ");
             for (String item : droppedItems) {
                 Message itemMsg = Message.empty()
-                    .insert(Message.raw(" - ").color("#AAAAAA"))
+                    .insert(Message.raw(itemPrefix).color("#AAAAAA"))
                     .insert(Message.raw(item).color("#FFFFFF"));
                 playerRef.sendMessage(itemMsg);
             }

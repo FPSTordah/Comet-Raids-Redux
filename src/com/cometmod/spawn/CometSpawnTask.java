@@ -351,12 +351,17 @@ public class CometSpawnTask {
             }
             
             try {
+                CometConfig cfg = CometConfig.getInstance();
+                String template = (cfg != null ? cfg.msgCometFallingChatCoords
+                        : "%tier% Comet falling! Target: X=%x%, Y=%y%, Z=%z%");
+                String text = template
+                        .replace("%tier%", tier.getName())
+                        .replace("%x%", Integer.toString(targetBlockPos.x))
+                        .replace("%y%", Integer.toString(targetBlockPos.y))
+                        .replace("%z%", Integer.toString(targetBlockPos.z));
+
                 com.hypixel.hytale.server.core.Message coordMessage =
-                    com.hypixel.hytale.server.core.Message.raw(
-                        tier.getName() + " Comet falling! Target: X=" + targetBlockPos.x +
-                        ", Y=" + targetBlockPos.y +
-                        ", Z=" + targetBlockPos.z
-                    );
+                    com.hypixel.hytale.server.core.Message.raw(text);
                 player.sendMessage(coordMessage);
             } catch (Exception e) {
                 // Ignore
@@ -366,10 +371,17 @@ public class CometSpawnTask {
                 com.hypixel.hytale.server.core.universe.PlayerRef playerRefComponent =
                     currentStore.getComponent(playerRef, com.hypixel.hytale.server.core.universe.PlayerRef.getComponentType());
                 if (playerRefComponent != null) {
+                    CometConfig cfg = CometConfig.getInstance();
+                    String titleTemplate = (cfg != null ? cfg.msgCometFallingTitle : "%tier% Comet Falling!");
+                    String subtitleTemplate = (cfg != null ? cfg.msgCometFallingSubtitle : "Watch the sky!");
+
+                    String titleText = titleTemplate.replace("%tier%", tier.getName());
+                    String subtitleText = subtitleTemplate.replace("%tier%", tier.getName());
+
                     com.hypixel.hytale.server.core.Message primaryTitle =
-                        com.hypixel.hytale.server.core.Message.raw(tier.getName() + " Comet Falling!");
+                        com.hypixel.hytale.server.core.Message.raw(titleText);
                     com.hypixel.hytale.server.core.Message secondaryTitle =
-                        com.hypixel.hytale.server.core.Message.raw("Watch the sky!");
+                        com.hypixel.hytale.server.core.Message.raw(subtitleText);
 
                     com.hypixel.hytale.server.core.util.EventTitleUtil.showEventTitleToPlayer(
                         playerRefComponent, primaryTitle, secondaryTitle,
