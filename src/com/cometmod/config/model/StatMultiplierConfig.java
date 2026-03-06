@@ -14,7 +14,7 @@ import java.util.logging.Logger;
  */
 public class StatMultiplierConfig {
 
-    private static final Logger LOGGER = Logger.getLogger("StatMultiplierConfig");
+    private static final Logger LOGGER = Logger.getLogger(StatMultiplierConfig.class.getName());
 
     // Theme ID -> Tier -> Multipliers
     private final Map<String, Map<Integer, TierMultipliers>> themeMultipliers = new HashMap<>();

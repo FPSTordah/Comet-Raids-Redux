@@ -12,11 +12,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
 /**
- * Generic claim integration gate for comet spawning.
+ * Generic claim integration gate for comet spawning using built-in providers only.
  */
 public final class ClaimProtectionGuard {
 
-    private static final Logger LOGGER = Logger.getLogger("ClaimProtectionGuard");
+    private static final Logger LOGGER = Logger.getLogger(ClaimProtectionGuard.class.getName());
     private static final Set<String> warnedUnknownProviders = ConcurrentHashMap.newKeySet();
     private static final List<String> SUPPORTED_PROVIDER_KEYS = List.of(
             "worldprotect",
@@ -44,7 +44,6 @@ public final class ClaimProtectionGuard {
             }
         }
 
-        // Legacy per-region WorldProtect rules remain supported.
         return WorldProtectRegionGuard.canSpawnAt(world, x, y, z, config);
     }
 
@@ -132,7 +131,7 @@ public final class ClaimProtectionGuard {
     private static void warnUnknownProviderOnce(String providerKey) {
         if (warnedUnknownProviders.add(providerKey)) {
             LOGGER.warning("ClaimProtect provider '" + providerKey
-                    + "' is not supported yet. Supported providers: WorldProtect, HyperFactions, Hyfaction, SimpleClaims, WiFlowsClaims, UltimateFaction, ElbaphFactions.");
+                    + "' is not supported. Built-in: worldprotect, hyperfactions, hyfaction, simpleclaims, wiflowsclaims, ultimatefaction, elbaphfactions.");
         }
     }
 }

@@ -20,6 +20,12 @@ public class ThemeConfig {
     private boolean randomBossSelection;
     private boolean naturalSpawn;  // If false, theme won't spawn naturally (manual spawn only)
 
+    /** Comet replacement: "default" (chest), "coffin", "portal", or "volcano". Optional; if unset, legacy theme-id rules apply. */
+    private String cometReplacement;
+
+    /** Single source of truth for what block to place for this theme. If null/blank, use tier default (Comet_Stone_{tier}). cometReplacement is not used for placement. */
+    private String spawnBlock;
+
     // Multi-wave support: if waves is non-empty, it overrides mobs/bosses
     private List<WaveEntry> waves;
 
@@ -113,6 +119,23 @@ public class ThemeConfig {
 
     public void setNaturalSpawn(boolean naturalSpawn) {
         this.naturalSpawn = naturalSpawn;
+    }
+
+    /** Comet replacement for this theme: "default", "coffin", "portal", or "volcano". Null = use legacy theme-id rules. */
+    public String getCometReplacement() {
+        return cometReplacement;
+    }
+
+    public void setCometReplacement(String cometReplacement) {
+        this.cometReplacement = cometReplacement;
+    }
+
+    public String getSpawnBlock() {
+        return spawnBlock;
+    }
+
+    public void setSpawnBlock(String spawnBlock) {
+        this.spawnBlock = spawnBlock;
     }
 
     // ========== REWARD OVERRIDE ==========

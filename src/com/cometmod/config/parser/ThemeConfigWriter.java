@@ -32,7 +32,7 @@ public class ThemeConfigWriter {
         // Call overloaded method with defaults for new parameters
         return generateFullConfig(minDelaySeconds, maxDelaySeconds, spawnChance,
                 despawnTimeMinutes, minSpawnDistance, maxSpawnDistance,
-                true, false, null, // naturalSpawnsEnabled, globalComets, disabledWorlds
+                true, false, false, null, // naturalSpawnsEnabled, globalComets, injectUseForCleanSlateBlocks, disabledWorlds
                 themes, tierSettings, rewardSettings, null);
     }
 
@@ -88,6 +88,43 @@ public class ThemeConfigWriter {
     }
 
     /**
+     * Generate themes.json (tierStatScaling + themes / monster groups).
+     */
+    public static String generateThemesOnlyConfig(Map<String, ThemeConfig> themes,
+            TierStatScalingConfig tierStatScaling) {
+        if (themes == null) {
+            themes = java.util.Collections.emptyMap();
+        }
+        if (tierStatScaling == null) {
+            tierStatScaling = new TierStatScalingConfig();
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("{\n");
+        sb.append(INDENT).append("\"tierStatScaling\": {\n");
+        sb.append(INDENT).append(INDENT).append("\"enabled\": ").append(tierStatScaling.isEnabled()).append(",\n");
+        sb.append(INDENT).append(INDENT).append("\"percentPerTier\": ").append(tierStatScaling.getPercentPerTier())
+                .append(",\n");
+        sb.append(INDENT).append(INDENT).append("\"zonePercentPerLevel\": ")
+                .append(tierStatScaling.getZonePercentPerLevel()).append(",\n");
+        sb.append(INDENT).append(INDENT).append("\"applyHp\": ").append(tierStatScaling.isApplyHp()).append(",\n");
+        sb.append(INDENT).append(INDENT).append("\"applyDamage\": ").append(tierStatScaling.isApplyDamage())
+                .append(",\n");
+        sb.append(INDENT).append(INDENT).append("\"applySpeed\": ").append(tierStatScaling.isApplySpeed())
+                .append(",\n");
+        sb.append(INDENT).append(INDENT).append("\"applyScale\": ").append(tierStatScaling.isApplyScale()).append("\n");
+        sb.append(INDENT).append("},\n\n");
+        sb.append(INDENT).append("\"themes\": {\n");
+        int index = 0;
+        for (Map.Entry<String, ThemeConfig> entry : themes.entrySet()) {
+            index++;
+            writeThemeMonsterGroupsOnly(sb, entry.getKey(), entry.getValue(), index < themes.size());
+        }
+        sb.append(INDENT).append("}\n");
+        sb.append("}\n");
+        return sb.toString();
+    }
+
+    /**
      * Generate complete config JSON with all settings including zone spawn chances
      */
     public static String generateFullConfig(
@@ -98,7 +135,7 @@ public class ThemeConfigWriter {
         // Call overloaded method with defaults for new parameters
         return generateFullConfig(minDelaySeconds, maxDelaySeconds, spawnChance,
                 despawnTimeMinutes, minSpawnDistance, maxSpawnDistance,
-                true, false, null, // naturalSpawnsEnabled, globalComets, disabledWorlds
+                true, false, false, null, // naturalSpawnsEnabled, globalComets, injectUseForCleanSlateBlocks, disabledWorlds
                 themes, tierSettings, rewardSettings, zoneSpawnChances);
     }
 
@@ -114,7 +151,7 @@ public class ThemeConfigWriter {
         return generateFullConfig(
                 minDelaySeconds, maxDelaySeconds, spawnChance,
                 despawnTimeMinutes, minSpawnDistance, maxSpawnDistance,
-                naturalSpawnsEnabled, globalComets, null,
+                naturalSpawnsEnabled, globalComets, false, null,
                 themes, tierSettings, rewardSettings, zoneSpawnChances);
     }
 
@@ -124,13 +161,14 @@ public class ThemeConfigWriter {
     public static String generateFullConfig(
             int minDelaySeconds, int maxDelaySeconds, double spawnChance,
             double despawnTimeMinutes, int minSpawnDistance, int maxSpawnDistance,
-            boolean naturalSpawnsEnabled, boolean globalComets, List<String> disabledWorlds,
+            boolean naturalSpawnsEnabled, boolean globalComets, boolean injectUseForCleanSlateBlocks,
+            List<String> disabledWorlds,
             Map<String, ThemeConfig> themes, Map<Integer, TierSettings> tierSettings,
             Map<Integer, TierRewards> rewardSettings, Map<String, ZoneSpawnChances> zoneSpawnChances) {
         return generateFullConfig(
                 minDelaySeconds, maxDelaySeconds, spawnChance,
                 despawnTimeMinutes, minSpawnDistance, maxSpawnDistance,
-                naturalSpawnsEnabled, globalComets, disabledWorlds,
+                naturalSpawnsEnabled, globalComets, injectUseForCleanSlateBlocks, true, disabledWorlds,
                 themes, tierSettings, rewardSettings, zoneSpawnChances,
                 null, null, false, true, null,
                 false, false, null,
@@ -151,7 +189,9 @@ public class ThemeConfigWriter {
     public static String generateFullConfig(
             int minDelaySeconds, int maxDelaySeconds, double spawnChance,
             double despawnTimeMinutes, int minSpawnDistance, int maxSpawnDistance,
-            boolean naturalSpawnsEnabled, boolean globalComets, List<String> disabledWorlds,
+            boolean naturalSpawnsEnabled, boolean globalComets, boolean injectUseForCleanSlateBlocks,
+            boolean disableWaveMobLoot,
+            List<String> disabledWorlds,
             Map<String, ThemeConfig> themes, Map<Integer, TierSettings> tierSettings,
             Map<Integer, TierRewards> rewardSettings, Map<String, ZoneSpawnChances> zoneSpawnChances,
             Map<String, TierRewards> zoneBaseLootPools, Map<Integer, TierInheritanceWeights> tierInheritanceWeights,
@@ -180,7 +220,9 @@ public class ThemeConfigWriter {
         sb.append(INDENT).append(INDENT).append("\"disabledWorlds\": ");
         appendStringArrayInline(sb, sanitizeWorldNames(disabledWorlds));
         sb.append(",\n");
-        sb.append(INDENT).append(INDENT).append("\"globalComets\": ").append(globalComets).append("\n");
+        sb.append(INDENT).append(INDENT).append("\"globalComets\": ").append(globalComets).append(",\n");
+        sb.append(INDENT).append(INDENT).append("\"injectUseForCleanSlateBlocks\": ").append(injectUseForCleanSlateBlocks).append(",\n");
+        sb.append(INDENT).append(INDENT).append("\"disableWaveMobLoot\": ").append(disableWaveMobLoot).append("\n");
         sb.append(INDENT).append("},\n\n");
 
         // Zone spawn chances section
@@ -313,7 +355,7 @@ public class ThemeConfigWriter {
     }
 
     /**
-     * Write a single theme to the StringBuilder
+     * Write a single theme to the StringBuilder (full: includes cometReplacement).
      */
     private static void writeTheme(StringBuilder sb, String id, ThemeConfig theme, boolean hasMore) {
         String i2 = INDENT + INDENT;
@@ -333,7 +375,13 @@ public class ThemeConfigWriter {
         }
         sb.append("],\n");
 
-        // Write mobs array
+        // Always write cometReplacement so the setting is visible (default, coffin, portal, volcano)
+        String cometReplacement = theme.getCometReplacement();
+        if (cometReplacement == null || cometReplacement.isBlank()) {
+            cometReplacement = "default";
+        }
+        sb.append(i3).append("\"cometReplacement\": \"").append(escapeString(cometReplacement)).append("\",\n");
+
         // Write mobs array
         sb.append(i3).append("\"mobs\": [\n");
         List<MobEntry> mobs = theme.getMobs();
@@ -362,6 +410,79 @@ public class ThemeConfigWriter {
             sb.append("\n");
         }
         sb.append(i3).append("]");
+
+        sb.append("\n").append(i2).append("}");
+        if (hasMore)
+            sb.append(",");
+        sb.append("\n");
+    }
+
+    /**
+     * Write a single theme for themes.json (includes optional cometReplacement and rewardOverride).
+     */
+    private static void writeThemeMonsterGroupsOnly(StringBuilder sb, String id, ThemeConfig theme, boolean hasMore) {
+        String i2 = INDENT + INDENT;
+        String i3 = INDENT + INDENT + INDENT;
+        String i4 = INDENT + INDENT + INDENT + INDENT;
+
+        sb.append(i2).append("\"").append(id).append("\": {\n");
+        sb.append(i3).append("\"displayName\": \"").append(escapeString(theme.getDisplayName())).append("\",\n");
+        sb.append(i3).append("\"tiers\": [");
+        List<Integer> tiers = theme.getTiers();
+        for (int i = 0; i < tiers.size(); i++) {
+            sb.append(tiers.get(i));
+            if (i < tiers.size() - 1)
+                sb.append(", ");
+        }
+        sb.append("],\n");
+        sb.append(i3).append("\"useTierSuffix\": ").append(theme.useTierSuffix()).append(",\n");
+        sb.append(i3).append("\"randomBossSelection\": ").append(theme.useRandomBossSelection()).append(",\n");
+        sb.append(i3).append("\"naturalSpawn\": ").append(theme.isNaturalSpawn()).append(",\n");
+        if (theme.getSpawnBlock() != null && !theme.getSpawnBlock().isBlank()) {
+            sb.append(i3).append("\"spawnBlock\": \"").append(escapeString(theme.getSpawnBlock())).append("\",\n");
+        }
+        if (theme.getCometReplacement() != null && !theme.getCometReplacement().isBlank()) {
+            sb.append(i3).append("\"cometReplacement\": \"").append(escapeString(theme.getCometReplacement())).append("\",\n");
+        }
+
+        sb.append(i3).append("\"mobs\": [\n");
+        List<MobEntry> mobs = theme.getMobs();
+        for (int i = 0; i < mobs.size(); i++) {
+            MobEntry mob = mobs.get(i);
+            sb.append(i4).append("{ \"id\": \"").append(escapeString(mob.getId())).append("\", ");
+            sb.append("\"count\": ").append(mob.getCount()).append(" }");
+            if (i < mobs.size() - 1)
+                sb.append(",");
+            sb.append("\n");
+        }
+        sb.append(i3).append("],\n");
+        sb.append(i3).append("\"bosses\": [\n");
+        List<BossEntry> bosses = theme.getBosses();
+        for (int i = 0; i < bosses.size(); i++) {
+            BossEntry boss = bosses.get(i);
+            sb.append(i4).append("{ \"id\": \"").append(escapeString(boss.getId())).append("\" }");
+            if (i < bosses.size() - 1)
+                sb.append(",");
+            sb.append("\n");
+        }
+        sb.append(i3).append("]");
+
+        if (theme.hasRewardOverride()) {
+            sb.append(",\n");
+            sb.append(i3).append("\"rewardOverride\": {\n");
+            Map<Integer, TierRewards> overrides = theme.getRewardOverride();
+            int count = 0;
+            for (Map.Entry<Integer, TierRewards> e : overrides.entrySet()) {
+                count++;
+                sb.append(i4).append("\"").append(e.getKey()).append("\": {\n");
+                writeTierRewardsBody(sb, e.getValue(), 5);
+                sb.append("\n").append(i4).append("}");
+                if (count < overrides.size())
+                    sb.append(",");
+                sb.append("\n");
+            }
+            sb.append(i3).append("}");
+        }
 
         sb.append("\n").append(i2).append("}");
         if (hasMore)

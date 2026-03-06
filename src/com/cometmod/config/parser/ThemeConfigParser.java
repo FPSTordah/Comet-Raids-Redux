@@ -24,6 +24,8 @@ import com.cometmod.config.model.WaveEntry;
 import com.cometmod.config.model.ZoneSpawnChances;
 import com.cometmod.config.model.TierInheritanceWeights;
 
+import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -41,7 +43,7 @@ import java.util.regex.Pattern;
  */
 public class ThemeConfigParser {
 
-    private static final Logger LOGGER = Logger.getLogger("ThemeConfigParser");
+    private static final Logger LOGGER = Logger.getLogger(ThemeConfigParser.class.getName());
 
     /**
      * Parse themes from a JSON string
@@ -90,6 +92,22 @@ public class ThemeConfigParser {
     }
 
     /**
+     * At theme load, if spawnBlock is set, check that the block type exists and log a warning if not.
+     */
+    private static void validateSpawnBlockAtLoad(String themeId, String spawnBlockId) {
+        try {
+            if (spawnBlockId == null || spawnBlockId.isBlank()) return;
+            var assetMap = BlockType.getAssetMap();
+            if (assetMap == null) return;
+            if (assetMap.getAsset(spawnBlockId) != null) return;
+            if (assetMap.getAsset(spawnBlockId + ".json") != null) return;
+            LOGGER.warning("Theme '" + themeId + "' spawnBlock '" + spawnBlockId + "' not found in block asset map. Will fall back to tier default at spawn time.");
+        } catch (Exception e) {
+            LOGGER.warning("Could not validate spawnBlock for theme '" + themeId + "': " + e.getMessage());
+        }
+    }
+
+    /**
      * Parse a single theme from its JSON block
      */
     private static ThemeConfig parseTheme(String id, String json) {
@@ -112,6 +130,20 @@ public class ThemeConfigParser {
             // Parse naturalSpawn (default true) - if false, theme won't spawn naturally.
             Boolean naturalSpawn = extractBooleanValue(json, "naturalSpawn");
             theme.setNaturalSpawn(naturalSpawn != null ? naturalSpawn : true);
+
+            // Parse cometReplacement (optional): "default", "coffin", "portal", "volcano"
+            String cometReplacement = extractStringValue(json, "cometReplacement");
+            if (cometReplacement != null && !cometReplacement.isBlank()) {
+                theme.setCometReplacement(cometReplacement.trim());
+            }
+
+            // Parse spawnBlock (optional): block type ID to spawn for this theme
+            String spawnBlock = extractStringValue(json, "spawnBlock");
+            if (spawnBlock != null && !spawnBlock.isBlank()) {
+                String trimmed = spawnBlock.trim();
+                theme.setSpawnBlock(trimmed);
+                validateSpawnBlockAtLoad(id, trimmed);
+            }
 
             // Parse tiers array
             List<Integer> tiers = extractIntArray(json, "tiers");

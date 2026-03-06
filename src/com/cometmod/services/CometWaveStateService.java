@@ -27,6 +27,8 @@ public class CometWaveStateService {
     private final Map<Vector3i, Integer> cometZones = new ConcurrentHashMap<>();
     private final Map<Vector3i, String> cometThemes = new ConcurrentHashMap<>();
     private final Map<Vector3i, String> forcedThemes = new ConcurrentHashMap<>();
+    /** Maps any block position that is part of a comet asset (e.g. multi-block chest/coffin) to the canonical comet position. */
+    private final Map<Vector3i, Vector3i> triggerPosToCanonical = new ConcurrentHashMap<>();
 
     public CometWaveManager.CometState getCometState(Vector3i blockPos) {
         CometWaveManager.CometState state = activeComets.get(blockPos);
@@ -61,6 +63,7 @@ public class CometWaveStateService {
 
     public void registerCometTier(Vector3i blockPos, CometTier tier, UUID ownerUUID, Logger logger) {
         cometTiers.put(blockPos, tier);
+        registerTriggerBox(blockPos);
         if (ownerUUID != null) {
             cometOwners.put(blockPos, ownerUUID);
             logger.info("Registered tier " + tier.getName() + " for comet at " + blockPos + " (owner: " + ownerUUID + ")");
@@ -69,12 +72,52 @@ public class CometWaveStateService {
         }
     }
 
+    /** Register every block in a box around the comet so any part of a multi-block asset (chest, coffin) triggers the comet. */
+    private void registerTriggerBox(Vector3i canonical) {
+        int r = CometConfig.COMET_ASSET_BOX_RADIUS;
+        for (int dx = -r; dx <= r; dx++) {
+            for (int dy = -r; dy <= r; dy++) {
+                for (int dz = -r; dz <= r; dz++) {
+                    triggerPosToCanonical.put(new Vector3i(canonical.x + dx, canonical.y + dy, canonical.z + dz), canonical);
+                }
+            }
+        }
+    }
+
     public UUID getOwner(Vector3i blockPos) {
         return cometOwners.get(blockPos);
     }
 
     public CometTier getTierOrDefault(Vector3i blockPos, CometTier fallback) {
-        return cometTiers.getOrDefault(blockPos, fallback);
+        if (blockPos == null) return fallback;
+        CometTier t = cometTiers.get(blockPos);
+        if (t != null) return t;
+        Vector3i canonical = findRegisteredPosition(blockPos.x, blockPos.y, blockPos.z);
+        return canonical != null ? cometTiers.getOrDefault(canonical, fallback) : fallback;
+    }
+
+    /** Find the registered comet position with these coordinates (map key may be a different Vector3i instance). Checks asset trigger box first so any block of a multi-block asset works. */
+    public Vector3i findRegisteredPosition(int x, int y, int z) {
+        Vector3i canonical = triggerPosToCanonical.get(new Vector3i(x, y, z));
+        if (canonical != null) return canonical;
+        for (Vector3i pos : cometTiers.keySet()) {
+            if (pos.x == x && pos.y == y && pos.z == z) return pos;
+        }
+        return null;
+    }
+
+    /** Find a registered comet position within manhattan distance of (x,y,z). Used when the clicked block may be adjacent. */
+    public Vector3i findRegisteredPositionNear(int x, int y, int z, int maxDistance) {
+        if (maxDistance <= 0) return findRegisteredPosition(x, y, z);
+        Vector3i exact = findRegisteredPosition(x, y, z);
+        if (exact != null) return exact;
+        for (Vector3i pos : cometTiers.keySet()) {
+            int dx = Math.abs(pos.x - x);
+            int dy = Math.abs(pos.y - y);
+            int dz = Math.abs(pos.z - z);
+            if (dx <= maxDistance && dy <= maxDistance && dz <= maxDistance) return pos;
+        }
+        return null;
     }
 
     public void registerCometZone(Vector3i blockPos, int zoneId) {
@@ -117,6 +160,7 @@ public class CometWaveStateService {
         cometThemes.remove(blockPos);
         forcedThemes.remove(blockPos);
         cometZones.remove(blockPos);
+        triggerPosToCanonical.entrySet().removeIf(e -> e.getValue().x == blockPos.x && e.getValue().y == blockPos.y && e.getValue().z == blockPos.z);
     }
 
     public Map<Vector3i, CometWaveManager.CometState> activeComets() {

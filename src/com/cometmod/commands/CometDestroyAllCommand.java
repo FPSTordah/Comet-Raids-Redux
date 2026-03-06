@@ -30,7 +30,7 @@ import java.util.logging.Logger;
  */
 public class CometDestroyAllCommand extends AbstractWorldCommand {
     
-    private static final Logger LOGGER = Logger.getLogger("CometDestroyAllCommand");
+    private static final Logger LOGGER = Logger.getLogger(CometDestroyAllCommand.class.getName());
     
     public CometDestroyAllCommand() {
         super("destroyall", "Destroy all comet blocks in the world");
@@ -49,89 +49,47 @@ public class CometDestroyAllCommand extends AbstractWorldCommand {
         
         try {
             Player player = context.senderAs(Player.class);
-            
-            // Get all tracked comets from CometDespawnTracker
-            CometDespawnTracker tracker = CometDespawnTracker.getInstance();
-            List<Vector3i> cometPositions = new ArrayList<>();
-            
-            // Get all registered comet positions
-            // We need to access the internal map - let's use a helper method
-            java.util.Map<String, Long> spawnTimes = getCometSpawnTimes(tracker);
-            
-            if (spawnTimes != null && !spawnTimes.isEmpty()) {
-                // Convert string keys to Vector3i positions
-                for (String key : spawnTimes.keySet()) {
-                    String[] parts = key.split(",");
-                    if (parts.length == 3) {
-                        try {
-                            Vector3i pos = new Vector3i(
-                                Integer.parseInt(parts[0]),
-                                Integer.parseInt(parts[1]),
-                                Integer.parseInt(parts[2])
-                            );
-                            cometPositions.add(pos);
-                        } catch (NumberFormatException e) {
-                            LOGGER.warning("Invalid position key: " + key);
-                        }
-                    }
-                }
-                LOGGER.info("Found " + cometPositions.size() + " tracked comets");
-            }
-            
-            if (cometPositions.isEmpty()) {
-                context.sendMessage(Message.raw("No tracked comet blocks found in the world."));
+
+            CometWaveManager waveManager = CometModPlugin.getWaveManager();
+            if (waveManager == null) {
+                context.sendMessage(Message.raw("Wave manager not available."));
                 return;
             }
-            
+
+            // Discover comets by registered positions from the wave manager
+            java.util.Map<Vector3i, ?> cometTiersMap = waveManager.getCometTiers();
+            List<Vector3i> cometPositions = new ArrayList<>(cometTiersMap.keySet());
+
+            if (cometPositions.isEmpty()) {
+                context.sendMessage(Message.raw("No registered comet positions found in the world."));
+                return;
+            }
+
             final int totalComets = cometPositions.size();
-            context.sendMessage(Message.raw("Found " + totalComets + " comet block(s). Destroying..."));
-            
+            context.sendMessage(Message.raw("Found " + totalComets + " comet(s). Destroying..."));
+
+            CometDespawnTracker tracker = CometDespawnTracker.getInstance();
+
             // Destroy all comets on the world thread
             world.execute(() -> {
                 int destroyed = 0;
-                CometWaveManager waveManager = CometModPlugin.getWaveManager();
-                
                 for (Vector3i pos : cometPositions) {
                     try {
-                        // Check if block is actually a comet block before destroying
-                        if (isCometBlock(world, pos)) {
-                            // Clear any active waves for this comet
-                            if (waveManager != null) {
-                                // Remove from active comets map
-                                java.util.Map<Vector3i, ?> activeComets = getActiveComets(waveManager);
-                                if (activeComets != null) {
-                                    activeComets.remove(pos);
-                                }
-                                // Remove from comet tiers map
-                                java.util.Map<Vector3i, ?> cometTiers = getCometTiers(waveManager);
-                                if (cometTiers != null) {
-                                    cometTiers.remove(pos);
-                                }
-                            }
-                            
-                            // Remove the block
-                            destroyCometBlock(world, pos);
-                            
-                            // Unregister from tracker
-                            tracker.unregisterComet(pos);
-                            
-                            destroyed++;
-                        } else {
-                            // Block is not a comet, just unregister from tracker
-                            tracker.unregisterComet(pos);
-                            LOGGER.info("Position " + pos + " was tracked but block is not a comet, unregistered");
+                        if (waveManager != null) {
+                            waveManager.handleBlockBreak(world, pos);
                         }
+                        destroyCometBlock(world, pos);
+                        tracker.unregisterComet(pos);
+                        destroyed++;
                     } catch (Exception e) {
                         LOGGER.warning("Error destroying comet at " + pos + ": " + e.getMessage());
                         e.printStackTrace();
                     }
                 }
-                
                 final int finalDestroyed = destroyed;
-                // Send completion message on main thread
                 com.hypixel.hytale.server.core.HytaleServer.SCHEDULED_EXECUTOR.execute(() -> {
-                    context.sendMessage(Message.raw("Destroyed " + finalDestroyed + " comet block(s)."));
-                    LOGGER.info("Destroyed " + finalDestroyed + " comet blocks via /comet destroyall");
+                    context.sendMessage(Message.raw("Destroyed " + finalDestroyed + " comet(s)."));
+                    LOGGER.info("Destroyed " + finalDestroyed + " comets via /comet destroyall");
                 });
             });
             
@@ -141,69 +99,9 @@ public class CometDestroyAllCommand extends AbstractWorldCommand {
             context.sendMessage(Message.raw("Error: " + e.getMessage()));
         }
     }
-    
+
     /**
-     * Get comet spawn times map from tracker using reflection
-     */
-    private java.util.Map<String, Long> getCometSpawnTimes(CometDespawnTracker tracker) {
-        try {
-            java.lang.reflect.Field field = CometDespawnTracker.class.getDeclaredField("cometSpawnTimes");
-            field.setAccessible(true);
-            return (java.util.Map<String, Long>) field.get(tracker);
-        } catch (Exception e) {
-            LOGGER.warning("Could not access cometSpawnTimes via reflection: " + e.getMessage());
-            return null;
-        }
-    }
-    
-    /**
-     * Get active comets map from wave manager using reflection
-     */
-    private java.util.Map<Vector3i, ?> getActiveComets(CometWaveManager waveManager) {
-        try {
-            java.lang.reflect.Field field = CometWaveManager.class.getDeclaredField("activeComets");
-            field.setAccessible(true);
-            return (java.util.Map<Vector3i, ?>) field.get(waveManager);
-        } catch (Exception e) {
-            LOGGER.warning("Could not access activeComets via reflection: " + e.getMessage());
-            return null;
-        }
-    }
-    
-    /**
-     * Get comet tiers map from wave manager using reflection
-     */
-    private java.util.Map<Vector3i, ?> getCometTiers(CometWaveManager waveManager) {
-        try {
-            java.lang.reflect.Field field = CometWaveManager.class.getDeclaredField("cometTiers");
-            field.setAccessible(true);
-            return (java.util.Map<Vector3i, ?>) field.get(waveManager);
-        } catch (Exception e) {
-            LOGGER.warning("Could not access cometTiers via reflection: " + e.getMessage());
-            return null;
-        }
-    }
-    
-    /**
-     * Check if a block at the given position is a comet block
-     */
-    private boolean isCometBlock(World world, Vector3i pos) {
-        try {
-            com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType blockType = 
-                world.getBlockType(pos.x, pos.y, pos.z);
-            
-            if (blockType != null) {
-                String blockId = blockType.getId();
-                return blockId != null && blockId.startsWith("Comet_Stone_");
-            }
-        } catch (Exception e) {
-            LOGGER.warning("Error checking block at " + pos + ": " + e.getMessage());
-        }
-        return false;
-    }
-    
-    /**
-     * Destroy a comet block at the given position
+     * Destroy the block at the given registered comet position.
      */
     private void destroyCometBlock(World world, Vector3i pos) {
         try {

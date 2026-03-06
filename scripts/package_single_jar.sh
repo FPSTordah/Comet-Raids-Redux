@@ -24,8 +24,7 @@ Notes:
       Common/
       Server/
       manifest.json
-      comet_config.json
-      fixed_spawns.json
+  - Config files (config.json, themes.json, fixed_spawns.json) are generated at runtime if missing.
 EOF
 }
 
@@ -72,7 +71,7 @@ for cmd in unzip zip; do
   command -v "$cmd" >/dev/null 2>&1 || die "Required command not found: $cmd"
 done
 
-for required in Common Server manifest.json comet_config.json fixed_spawns.json; do
+for required in Common Server manifest.json; do
   [[ -e "$ROOT_DIR/$required" ]] || die "Required project path missing: $required"
 done
 
@@ -113,8 +112,6 @@ fi
 cp -a "$ROOT_DIR/Common" "$STAGING_DIR/"
 cp -a "$ROOT_DIR/Server" "$STAGING_DIR/"
 cp -a "$ROOT_DIR/manifest.json" "$STAGING_DIR/"
-cp -a "$ROOT_DIR/comet_config.json" "$STAGING_DIR/"
-cp -a "$ROOT_DIR/fixed_spawns.json" "$STAGING_DIR/"
 
 rm -f "$OUTPUT_JAR_ABS"
 (cd "$STAGING_DIR" && zip -X -r -q "$OUTPUT_JAR_ABS" .)
@@ -125,5 +122,3 @@ echo "Included roots:"
 echo "  - Common/"
 echo "  - Server/"
 echo "  - manifest.json"
-echo "  - comet_config.json"
-echo "  - fixed_spawns.json"

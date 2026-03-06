@@ -12,7 +12,7 @@ import java.util.logging.Logger;
  */
 public final class HyperFactionsClaimGuard {
 
-    private static final Logger LOGGER = Logger.getLogger("HyperFactionsClaimGuard");
+    private static final Logger LOGGER = Logger.getLogger(HyperFactionsClaimGuard.class.getName());
 
     private static Method isAvailableMethod;
     private static Method isClaimedMethod;

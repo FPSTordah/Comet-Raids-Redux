@@ -23,7 +23,7 @@ import javax.annotation.Nonnull;
 import java.util.logging.Logger;
 
 public class CometStoneActivateInteraction extends SimpleInstantInteraction {
-    private static final Logger LOGGER = Logger.getLogger("CometStoneActivateInteraction");
+    private static final Logger LOGGER = Logger.getLogger(CometStoneActivateInteraction.class.getName());
     
     @Nonnull
     public static final BuilderCodec<CometStoneActivateInteraction> CODEC;
@@ -65,6 +65,9 @@ public class CometStoneActivateInteraction extends SimpleInstantInteraction {
         commandBuffer.run(store -> {
             try {
                 CometWaveManager.CometState state = waveManager.getCometState(blockPos);
+                if (CometConfig.DEBUG) {
+                    LOGGER.info("[CometDebug] CometStoneActivateInteraction at " + blockPos + " state=" + state);
+                }
                 if (state != CometWaveManager.CometState.COMPLETED) {
                     waveManager.handleCometActivation(store, playerRef, blockPos);
                 }

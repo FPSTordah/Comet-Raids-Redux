@@ -34,7 +34,7 @@ import java.util.logging.Logger;
  */
 public class CometDamageModifierSystem extends DamageEventSystem {
 
-    private static final Logger LOGGER = Logger.getLogger("CometDamageModifier");
+    private static final Logger LOGGER = Logger.getLogger(CometDamageModifierSystem.class.getName());
 
     @Override
     public SystemGroup<EntityStore> getGroup() {

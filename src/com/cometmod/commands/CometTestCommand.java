@@ -25,7 +25,7 @@ import java.util.logging.Logger;
  */
 public class CometTestCommand extends AbstractWorldCommand {
     
-    private static final Logger LOGGER = Logger.getLogger("CometTestCommand");
+    private static final Logger LOGGER = Logger.getLogger(CometTestCommand.class.getName());
     
     public CometTestCommand() {
         super("test", "Test automatic comet spawning (simulates zone-based spawn)");

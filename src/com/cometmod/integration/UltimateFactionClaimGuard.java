@@ -16,7 +16,7 @@ import java.util.logging.Logger;
  */
 public final class UltimateFactionClaimGuard {
 
-    private static final Logger LOGGER = Logger.getLogger("UltimateFactionClaimGuard");
+    private static final Logger LOGGER = Logger.getLogger(UltimateFactionClaimGuard.class.getName());
     private static final PluginIdentifier ULTIMATE_FACTION_ID = new PluginIdentifier("com.tinky", "Ultimate Faction");
 
     private static Method getClaimStoreMethod;

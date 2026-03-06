@@ -1,7 +1,8 @@
 package com.cometmod.commands;
 
-import com.cometmod.*;
-import com.cometmod.commands.*;
+import com.cometmod.CometConfig;
+import com.cometmod.CometModPlugin;
+import com.cometmod.integration.ClaimProtectionGuard;
 import com.cometmod.services.*;
 import com.cometmod.spawn.*;
 import com.cometmod.systems.*;
@@ -24,15 +25,13 @@ import com.hypixel.hytale.server.core.universe.world.WorldMapTracker;
 import com.hypixel.hytale.server.core.universe.world.chunk.WorldChunk;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.core.util.EventTitleUtil;
-import com.cometmod.integration.ClaimProtectionGuard;
-
 import javax.annotation.Nonnull;
 import java.util.Random;
 import java.util.logging.Logger;
 
 public class CometSpawnCommand extends AbstractWorldCommand {
 
-    private static final Logger LOGGER = Logger.getLogger("CometSpawnCommand");
+    private static final Logger LOGGER = Logger.getLogger(CometSpawnCommand.class.getName());
     private static final Random RANDOM = new Random();
 
     // Optional tier argument
@@ -43,10 +42,10 @@ public class CometSpawnCommand extends AbstractWorldCommand {
     private final OptionalArg<String> onMeArg;
 
     public CometSpawnCommand() {
-        super("spawn", "Spawns a comet near the player");
+        super("spawn", "Spawns a comet near the player. Use --theme <name> to choose the wave theme (see /comet themes).");
         requirePermission(CometPermissions.SPAWN);
         this.tierArg = withOptionalArg("tier", "Tier of the comet (Uncommon, Rare, Epic, Legendary, Mythic)", ArgTypes.STRING);
-        this.themeArg = withOptionalArg("theme", "Theme of the wave (e.g. Skeleton, Goblin, Spider)", ArgTypes.STRING);
+        this.themeArg = withOptionalArg("theme", "Theme of the wave — e.g. Skeleton, Void, Lava. Use /comet themes to list all.", ArgTypes.STRING);
         this.onMeArg = withOptionalArg("onme", "Use --onme true to spawn comet directly above the player", ArgTypes.STRING);
     }
 
@@ -194,6 +193,7 @@ public class CometSpawnCommand extends AbstractWorldCommand {
 
             // Target block position (1 block above ground)
             final Vector3i targetBlockPos = new Vector3i(spawnX, spawnY + 1, spawnZ);
+            final java.util.UUID ownerUUID = player.getUuid();
 
             if (themeId != null) {
                 CometWaveManager waveManager = CometModPlugin.getWaveManager();
@@ -215,7 +215,8 @@ public class CometSpawnCommand extends AbstractWorldCommand {
                     .getAsset(projectileConfigName);
 
             if (projectileConfig == null) {
-                context.sendMessage(Message.raw("Error: " + projectileConfigName + " projectile config not found!"));
+                context.sendMessage(Message.raw(projectileConfigName + " projectile config not found; placing spawn block directly."));
+                spawnCometBlockDirectly(world, targetBlockPos, store, tier, themeId, ownerUUID, zoneId);
                 return;
             }
 
@@ -238,20 +239,12 @@ public class CometSpawnCommand extends AbstractWorldCommand {
             // Store tier and owner UUID with the projectile tracking
             // We'll pass them to spawnCometBlock when projectile lands
             final CometTier finalTier = tier;
-            final java.util.UUID ownerUUID = player.getUuid();
 
             // Generate UUID for tracking this projectile
             java.util.UUID projectileUUID = java.util.UUID.randomUUID();
 
-            com.hypixel.hytale.component.CommandBuffer<EntityStore> commandBuffer = null;
-            try {
-                java.lang.reflect.Method takeCommandBufferMethod = store.getClass()
-                        .getDeclaredMethod("takeCommandBuffer");
-                takeCommandBufferMethod.setAccessible(true);
-                commandBuffer = (com.hypixel.hytale.component.CommandBuffer<EntityStore>) takeCommandBufferMethod
-                        .invoke(store);
-            } catch (Exception e) {
-                LOGGER.warning("Could not get command buffer: " + e.getMessage());
+            com.hypixel.hytale.component.CommandBuffer<EntityStore> commandBuffer = com.cometmod.util.CommandBufferUtil.take(store);
+            if (commandBuffer == null) {
                 spawnCometBlockDirectly(world, targetBlockPos, store, tier, themeId, ownerUUID, zoneId);
                 return;
             }
@@ -278,15 +271,7 @@ public class CometSpawnCommand extends AbstractWorldCommand {
                 LOGGER.severe("Error spawning projectile: " + e.getMessage());
                 spawnCometBlockDirectly(world, targetBlockPos, store, finalTier, themeId, ownerUUID, zoneId);
             } finally {
-                if (commandBuffer != null) {
-                    try {
-                        java.lang.reflect.Method consumeMethod = commandBuffer.getClass().getDeclaredMethod("consume");
-                        consumeMethod.setAccessible(true);
-                        consumeMethod.invoke(commandBuffer);
-                    } catch (Exception e) {
-                        LOGGER.warning("Could not consume command buffer: " + e.getMessage());
-                    }
-                }
+                com.cometmod.util.CommandBufferUtil.consume(commandBuffer);
             }
 
             // Send chat message
@@ -390,72 +375,7 @@ public class CometSpawnCommand extends AbstractWorldCommand {
             String themeId, java.util.UUID ownerUUID, int zoneId) {
         world.execute(() -> {
             try {
-                CometConfig config = CometConfig.getInstance();
-                if (!ClaimProtectionGuard.canSpawnAt(world, blockPos.x, blockPos.y, blockPos.z, config)) {
-                    LOGGER.info("Direct comet spawn blocked by claim/protected-zone rules at " + blockPos);
-                    return;
-                }
-
-                long chunkIndex = com.hypixel.hytale.math.util.ChunkUtil.indexChunkFromBlock(
-                        blockPos.x, blockPos.z);
-                WorldChunk chunk = world.getChunkIfInMemory(chunkIndex);
-
-                if (chunk == null) {
-                    chunk = world.getChunk(chunkIndex);
-                }
-
-                if (chunk == null) {
-                    LOGGER.warning("Could not get chunk for comet at " + blockPos);
-                    return;
-                }
-
-                int localX = blockPos.x & 31;
-                int localZ = blockPos.z & 31;
-
-                String blockIdName = tier.getBlockId("Comet_Stone");
-                com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType blockType = com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType
-                        .getAssetMap()
-                        .getAsset(blockIdName);
-
-                if (blockType == null) {
-                    LOGGER.warning(blockIdName + " block type not found!");
-                    return;
-                }
-
-                int blockId = com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType
-                        .getAssetMap().getIndex(blockIdName);
-
-                if (blockId == -1) {
-                    LOGGER.warning(blockIdName + " block ID not found!");
-                    return;
-                }
-
-                chunk.setBlock(localX, blockPos.y, localZ, blockId, blockType, 0, 0, 0);
-                chunk.markNeedsSaving();
-
-                CometWaveManager waveManager = CometModPlugin.getWaveManager();
-                if (waveManager != null) {
-                    waveManager.registerCometZone(blockPos, zoneId);
-                    waveManager.registerCometTier(world, blockPos, tier, ownerUUID);
-                    if (themeId != null) {
-                        waveManager.forceTheme(blockPos, themeId);
-                    }
-                }
-
-                if (store != null) {
-                    try {
-                        Vector3d explosionPos = new Vector3d(blockPos.x + 0.5, blockPos.y + 0.5, blockPos.z + 0.5);
-                        String explosionSystem = tier.getExplosionParticleSystem();
-                        com.hypixel.hytale.server.core.universe.world.ParticleUtil.spawnParticleEffect(
-                                explosionSystem,
-                                explosionPos,
-                                store);
-                    } catch (Exception e) {
-                        LOGGER.warning("Failed to spawn explosion particles: " + e.getMessage());
-                    }
-                }
-
-                CometDespawnTracker.getInstance().registerComet(blockPos, tier.getName());
+                CometSpawnUtil.placeAndRegisterCometBlock(world, blockPos, store, tier, themeId, ownerUUID, zoneId);
             } catch (Exception e) {
                 LOGGER.severe("Error spawning comet block: " + e.getMessage());
                 e.printStackTrace();

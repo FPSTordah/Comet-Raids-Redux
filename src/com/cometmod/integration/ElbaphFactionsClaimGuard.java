@@ -12,7 +12,7 @@ import java.util.logging.Logger;
  */
 public final class ElbaphFactionsClaimGuard {
 
-    private static final Logger LOGGER = Logger.getLogger("ElbaphFactionsClaimGuard");
+    private static final Logger LOGGER = Logger.getLogger(ElbaphFactionsClaimGuard.class.getName());
 
     private static Method claimManagerGetInstanceMethod;
     private static Method isChunkClaimedMethod;

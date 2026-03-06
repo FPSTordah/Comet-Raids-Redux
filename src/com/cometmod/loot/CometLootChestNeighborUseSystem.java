@@ -49,7 +49,10 @@ public class CometLootChestNeighborUseSystem extends EntityEventSystem<EntitySto
 
         Vector3i target = event.getTargetBlock();
         CometLootChestService chestService = CometLootChestService.getInstance();
-        if (target == null || chestService.isManagedChest(target)) {
+        if (target == null) {
+            return;
+        }
+        if (chestService.isManagedChest(target)) {
             return;
         }
 

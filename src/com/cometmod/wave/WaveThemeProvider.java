@@ -30,7 +30,7 @@ import com.cometmod.config.model.WaveEntry;
  */
 public class WaveThemeProvider {
 
-    private static final Logger LOGGER = Logger.getLogger("WaveThemeProvider");
+    private static final Logger LOGGER = Logger.getLogger(WaveThemeProvider.class.getName());
     private static final Random RANDOM = new Random();
     // Per-tier shuffled theme bags to avoid repeated streaks from pure nextInt selection.
     private static final Map<Integer, Deque<String>> TIER_THEME_BAGS = new HashMap<>();

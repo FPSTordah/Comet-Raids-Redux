@@ -12,7 +12,7 @@ import java.util.logging.Logger;
  */
 public final class HyfactionClaimGuard {
 
-    private static final Logger LOGGER = Logger.getLogger("HyfactionClaimGuard");
+    private static final Logger LOGGER = Logger.getLogger(HyfactionClaimGuard.class.getName());
 
     private static Method claimManagerGetInstanceMethod;
     private static Method getChunkMethod;

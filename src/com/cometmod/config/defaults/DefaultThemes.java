@@ -28,6 +28,10 @@ public class DefaultThemes {
     public static Map<String, ThemeConfig> generateDefaults() {
         Map<String, ThemeConfig> themes = new LinkedHashMap<>();
 
+        // Default spawnBlock: skeleton/ghoul/undead -> coffin (one default; edit in themes.json to another or remove)
+        final String defaultCoffin = "Comet_Furniture_Village_Coffin";
+        final String defaultVoidPortal = "Comet_VoidInvasion_Portal";
+
         // Tier 1 Native Themes (available at tiers 1, 2)
         themes.put("skeleton", createTheme("skeleton", "Skeleton Horde",
                 Arrays.asList(1, 2),
@@ -37,7 +41,8 @@ public class DefaultThemes {
                         new MobEntry("Skeleton_Archmage", 1)),
                 Arrays.asList(
                         new BossEntry("Bear_Polar"),
-                        new BossEntry("Wolf_Black"))));
+                        new BossEntry("Wolf_Black")),
+                defaultCoffin));
 
         themes.put("goblin", createTheme("goblin", "Goblin Gang",
                 Arrays.asList(1, 2),
@@ -78,7 +83,8 @@ public class DefaultThemes {
                         new MobEntry("Skeleton_Sand_Ranger", 1)),
                 Arrays.asList(
                         new BossEntry("Bear_Grizzly"),
-                        new BossEntry("Skeleton_Burnt_Alchemist"))));
+                        new BossEntry("Skeleton_Burnt_Alchemist")),
+                defaultCoffin));
 
         themes.put("sabertooth", createTheme("sabertooth", "Sabertooth Pack",
                 Arrays.asList(1, 2, 3),
@@ -125,7 +131,8 @@ public class DefaultThemes {
                         new MobEntry("Skeleton_Burnt_Knight", 1),
                         new MobEntry("Skeleton_Burnt_Lancer", 2)),
                 Arrays.asList(
-                        new BossEntry("Skeleton_Burnt_Praetorian"))));
+                        new BossEntry("Skeleton_Burnt_Praetorian")),
+                defaultCoffin));
 
         // Void - Special: available at tiers 1, 2, 3 (excluded from 4)
         themes.put("void", createTheme("void", "Voidspawn",
@@ -134,7 +141,8 @@ public class DefaultThemes {
                         new MobEntry("Crawler_Void", 2),
                         new MobEntry("Spectre_Void", 2)),
                 Arrays.asList(
-                        new BossEntry("Spawn_Void"))));
+                        new BossEntry("Spawn_Void")),
+                defaultVoidPortal));
 
         // Legendary Themes (tier 4+)
         themes.put("ice", createTheme("ice", "Legendary Ice",
@@ -172,7 +180,8 @@ public class DefaultThemes {
                         new MobEntry("Cow_Undead", 1),
                         new MobEntry("Chicken_Undead", 2)),
                 Arrays.asList(
-                        new BossEntry("Golem_Crystal_Thunder"))));
+                        new BossEntry("Golem_Crystal_Thunder")),
+                defaultCoffin));
 
         themes.put("undead_legendary", createTheme("undead_legendary", "Legendary Undead",
                 Arrays.asList(3, 4, 5),
@@ -182,14 +191,16 @@ public class DefaultThemes {
                         new MobEntry("Chicken_Undead", 6),
                         new MobEntry("Hound_Bleached", 3)),
                 Arrays.asList(
-                        new BossEntry("Wraith"))));
+                        new BossEntry("Wraith")),
+                defaultCoffin));
 
         themes.put("zombie", createTheme("zombie", "Zombie Aberration",
                 Arrays.asList(3, 4, 5),
                 Arrays.asList(
                         new MobEntry("Zombie_Aberrant_Small", 5)),
                 Arrays.asList(
-                        new BossEntry("Zombie_Aberrant"))));
+                        new BossEntry("Zombie_Aberrant")),
+                defaultCoffin));
 
         // Additional variety themes
         themes.put("frostbound_pack", createTheme("frostbound_pack", "Frostbound Pack",
@@ -235,7 +246,8 @@ public class DefaultThemes {
                         new MobEntry("Skeleton_Archmage", 1)),
                 Arrays.asList(
                         new BossEntry("Spawn_Void"),
-                        new BossEntry("Wraith"))));
+                        new BossEntry("Wraith")),
+                defaultVoidPortal));
 
         themes.put("plague_horde", createTheme("plague_horde", "Plague Horde",
                 Arrays.asList(2, 3, 4, 5),
@@ -246,7 +258,8 @@ public class DefaultThemes {
                         new MobEntry("Hound_Bleached", 2)),
                 Arrays.asList(
                         new BossEntry("Wraith"),
-                        new BossEntry("Golem_Crystal_Thunder_Comet"))));
+                        new BossEntry("Golem_Crystal_Thunder_Comet")),
+                defaultCoffin));
 
         themes.put("trork_siege", createTheme("trork_siege", "Trork Siege",
                 Arrays.asList(2, 3, 4),
@@ -311,6 +324,11 @@ public class DefaultThemes {
 
     private static ThemeConfig createTheme(String id, String displayName,
             List<Integer> tiers, List<MobEntry> mobs, List<BossEntry> bosses) {
+        return createTheme(id, displayName, tiers, mobs, bosses, null);
+    }
+
+    private static ThemeConfig createTheme(String id, String displayName,
+            List<Integer> tiers, List<MobEntry> mobs, List<BossEntry> bosses, String spawnBlock) {
         ThemeConfig theme = new ThemeConfig(id, displayName, tiers, mobs, bosses, true);
         List<WaveEntry> waves = new ArrayList<>();
 
@@ -323,6 +341,9 @@ public class DefaultThemes {
         waves.add(bossWave);
 
         theme.setWaves(waves);
+        if (spawnBlock != null && !spawnBlock.isBlank()) {
+            theme.setSpawnBlock(spawnBlock.trim());
+        }
         return theme;
     }
 

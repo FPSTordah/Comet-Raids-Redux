@@ -12,7 +12,7 @@ import java.util.logging.Logger;
  */
 public final class SimpleClaimsClaimGuard {
 
-    private static final Logger LOGGER = Logger.getLogger("SimpleClaimsClaimGuard");
+    private static final Logger LOGGER = Logger.getLogger(SimpleClaimsClaimGuard.class.getName());
 
     private static Method claimManagerGetInstanceMethod;
     private static Method getChunkMethod;

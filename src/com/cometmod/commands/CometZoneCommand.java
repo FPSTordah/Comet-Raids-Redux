@@ -29,7 +29,7 @@ import java.util.logging.Logger;
  */
 public class CometZoneCommand extends AbstractWorldCommand {
     
-    private static final Logger LOGGER = Logger.getLogger("CometZoneCommand");
+    private static final Logger LOGGER = Logger.getLogger(CometZoneCommand.class.getName());
     
     public CometZoneCommand() {
         super("zone", "Check which zone you are currently in");

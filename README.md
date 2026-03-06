@@ -3,11 +3,11 @@
 Source code: `https://github.com/FPSTordah/Comet-Raids-Redux`
 Support Discord: `https://discord.gg/r5MBWdzWWW`
 
-Ever wanted random events to spice up your Hytale gameplay? This mod adds falling comets that crash into your world, bringing waves of enemies to fight. Break the comet stone to start the encounter - survive all waves and claim your rewards.
+Ever wanted random events to spice up your Hytale gameplay? This mod adds falling comets that crash into your world, bringing waves of enemies to fight. Break the comet block (or press F on coffin/portal) to start the encounter - survive all waves and claim your rewards.
 
 `Comet_Raids_Redux` is the actively maintained continuation of the original Comet Raids project.
 
-Current release: **v3.2.4**
+Current release: **v4.0.0**
 
 This mod is built for players who want a raid-like experience and server owners who want a customizable reward system. You can create custom themes, define multi-wave encounters, override loot tables per theme, and tweak every aspect of spawning and combat.
 
@@ -25,7 +25,8 @@ This mod is built for players who want a raid-like experience and server owners 
 
 When a comet encounter is cleared, the reward chest system works like this:
 
-- A reward chest drops at the comet completion location.
+- **Comet stone blocks** (`Comet_Stone_*`): the block is replaced by the reward chest on the same spot.
+- **Other spawn blocks** (coffin, portal, custom): the block stays; the chest is placed in front of it. When the chest expires or is broken, the mod removes the linked block too.
 - Each comet creates its own chest instance with loot generated for that comet's tier/theme.
 
 ## Quick Start
@@ -54,7 +55,7 @@ Recommended admin setup in LuckPerms:
 
 ### Deploy
 
-Place `Comet_Raids_Redux-3.2.4.jar` in your server mods/plugins location, replacing the old jar, then restart the server.
+Place `Comet_Raids_Redux-4.0.0.jar` in your server mods/plugins location, replacing the old jar, then restart the server.
 
 ### IDE
 
@@ -96,10 +97,10 @@ The tier of comet that spawns depends on `zoneSpawnChances` (`0..3` keys in conf
 
 ### Fixed Spawn Point Commands
 
-Current source snapshot status:
+Fixed spawn *points* are loaded from `fixed_spawns.json` and can be listed; the runtime that would *auto-trigger* comets at those points on a cooldown or schedule is **not implemented** in this snapshot (intentionally left out), so comets are not spawned at fixed locations by the mod. You can still use the file for your own reference or future re-enable.
 
-- `/comet listspawns` is functional (read-only list from `fixed_spawns.json`)
-- `/comet setspawn`, `/comet schedulespawn`, `/comet removespawn` are placeholders and currently direct you to edit `fixed_spawns.json` manually.
+- `/comet listspawns` — lists configured points from `fixed_spawns.json` (read-only)
+- `/comet setspawn`, `/comet schedulespawn`, `/comet removespawn` — placeholders; edit `fixed_spawns.json` manually.
 
 | Command | Description |
 |---------|-------------|
@@ -176,10 +177,27 @@ These are still valid as JSON examples, but command-based editing is currently d
 
 ## Configuration
 
-Settings are split across two files:
+Settings are split across three files (all generated on first run if missing):
 
-- `comet_config.json` - spawn behavior, zone chances, tier settings, reward tables, inheritance, WorldProtect rules
-- `comet_themes_and_monster_groups.json` - themes/waves and global stat scaling multipliers
+- `config.json` - main configuration: spawn behavior, zone chances, tier settings, reward tables, inheritance, WorldProtect rules, messages
+- `themes.json` - theme definitions (monster groups, optional **spawnBlock** and per-theme reward overrides): which mobs/bosses and waves per theme
+- `fixed_spawns.json` - fixed spawn points
+
+### Message placeholders
+
+Chat and banner messages in `config.json` under `"messages"` support placeholders. Full list and message keys are in the in-game Voile doc (Comet Raids Redux guide). Quick reference:
+
+| Placeholder | Description |
+|-------------|-------------|
+| `%tier%` | Comet tier (Uncommon, Rare, Mythic, etc.) |
+| `%x%`, `%y%`, `%z%` | Comet block coordinates |
+| `%currentWave%`, `%totalWaves%` | Wave progress |
+| `%theme%` | Theme display name |
+| `%bossStatus%` | Alive / Defeated |
+| `%killed%`, `%total%` | Mobs killed / total this wave |
+| `%time%` | Remaining time |
+
+Message keys: `msgCometFallingTitle`, `msgCometFallingSubtitle`, `msgCometFallingChatCoords`, `msgWaveBossTitle`, `msgWaveBossTitleNoCount`, `msgWaveBossSubtitle`, `msgWaveTitle`, `msgWaveTitleNoCount`, `msgWaveSubtitle`, `msgWaveFailedTitle`, `msgWaveFailedSubtitle`, `msgWaveCompleteTitle`, `msgWaveCompleteSubtitle`, `msgWaveCompleteChatHeaderPrefix`, `msgWaveCompleteChatHeader`, `msgWaveCompleteChatItemPrefix`.
 
 ## Packaging As One JAR
 
@@ -193,31 +211,27 @@ mvn clean package
 
 This creates:
 
-- `target/Comet_Raids_Redux-3.2.4.jar`
+- `target/Comet_Raids_Redux-4.0.0.jar`
 
 The output JAR includes:
 
 - `Common/`
 - `Server/`
 - `manifest.json`
-- `comet_config.json`
-- `fixed_spawns.json`
 
-`comet_themes_and_monster_groups.json` is generated/updated at runtime as the theme/multiplier config source.
+Config files (`config.json`, `themes.json`, `fixed_spawns.json`) are generated in the plugin directory on first run if missing.
 
 In IntelliJ, open/import the project as a Maven project and use Build/Rebuild.
 
 ### Fixed Spawn Points
 
-Fixed spawn points are stored in a separate file: `fixed_spawns.json`.
+Fixed spawn points are stored in `fixed_spawns.json`. The mod loads and lists them, but **does not run a scheduler**: no comets are auto-spawned at these locations. Edit the file manually and use `/comet listspawns` to verify. Command-based editing (`setspawn` / `schedulespawn` / `removespawn`) is not implemented.
 
-In this source snapshot, command-based fixed-spawn editing/scheduling is disabled; edit this file directly and use `/comet listspawns` to verify.
+The schema supports (for future or external use):
+- **Cooldown mode**: `cooldownSeconds` — would spawn every X seconds
+- **Scheduled mode**: `scheduledTimes` — would spawn at specific real-world times (24-hour)
 
-Schema supports two modes:
-- **Cooldown mode**: Spawns a comet every X seconds
-- **Scheduled mode**: Spawns at specific real-world times (24-hour format)
-
-> **Current limitation:** runtime fixed-spawn scheduling is disabled in this source snapshot. The file format is documented here for compatibility and future re-enable.
+The file format is documented for compatibility and possible future re-enable of a scheduler.
 
 ```json
 {
@@ -266,7 +280,7 @@ Schema supports two modes:
 **spawnSettings** - Controls natural comet spawning
 ```json
 "spawnSettings": {
-  "naturalSpawnsEnabled": true, // Set to false to disable random spawns (use only fixed spawn points)
+  "naturalSpawnsEnabled": true, // Set to false to disable random spawns (comets only via commands)
   "minDelaySeconds": 120,      // Minimum time between spawn attempts
   "maxDelaySeconds": 300,      // Maximum time between spawn attempts
   "spawnChance": 0.4,          // 40% chance to spawn when timer triggers
@@ -274,11 +288,12 @@ Schema supports two modes:
   "minSpawnDistance": 30,      // Minimum blocks from player
   "maxSpawnDistance": 50,      // Maximum blocks from player
   "disabledWorlds": [],        // World names where comet raids are disabled (case-insensitive)
-  "globalComets": false        // If true, any player can trigger any comet
+  "globalComets": false,       // If true, any player can trigger any comet
+  "disableWaveMobLoot": true  // If true, mobs spawned in waves drop no loot (default true)
 }
 ```
 
-> **Tip:** If you want comets to only spawn at fixed locations, set `"naturalSpawnsEnabled": false` and configure spawn points in `fixed_spawns.json`.
+> **Tip:** To disable random spawns, set `"naturalSpawnsEnabled": false`; use `/comet spawn` to spawn comets manually. Fixed-spawn auto-trigger is not implemented.
 
 **claimProtect** - Generic claim-plugin spawn blocking
 ```json
@@ -338,7 +353,7 @@ Supported providers right now:
 
 **tierInheritanceWeights** - Lower-tier inclusion chances per active tier
 
-Theme and multiplier config now live in `comet_themes_and_monster_groups.json`:
+Theme and multiplier config: `tierStatScaling`, **spawnBlock** (which block to place), and per-theme reward overrides all live in `themes.json`. For custom blocks (coffin/portal or your own), see the in-game Voile doc (Comet Raids Redux guide).
 
 ```json
 "tierStatScaling": {
@@ -356,12 +371,12 @@ Theme and multiplier config now live in `comet_themes_and_monster_groups.json`:
 
 On load, the mod runs lightweight validation for:
 
-- `comet_config.json`
+- `config.json`
 - `fixed_spawns.json`
 
 Validation emits actionable logs with this prefix:
 
-- `[ConfigValidation][comet_config.json]`
+- `[ConfigValidation][config.json]`
 - `[ConfigValidation][fixed_spawns.json]`
 
 Errors do not hard-stop startup, but indicate config issues you should fix.
@@ -369,7 +384,7 @@ Errors do not hard-stop startup, but indicate config issues you should fix.
 ### Boot-Time JSON Sync
 
 On startup, the mod now automatically:
-- Creates missing `comet_config.json`, `comet_themes_and_monster_groups.json`, and `fixed_spawns.json`
+- Creates missing `config.json`, `themes.json`, and `fixed_spawns.json`
 - Merges/synchronizes missing config keys into existing files using current schema defaults
 
 This keeps older config files forward-compatible after updates without manual key-by-key edits.
@@ -385,28 +400,13 @@ These keys are supported by the mod parser and should be treated as metadata by 
 
 ### Theme Configuration
 
-Themes can have custom reward overrides that replace the default tier rewards:
+Theme definitions (mobs, bosses, waves) go in `themes.json`. You can set **spawnBlock** per theme to the block type ID to place instead of the tier comet stone (e.g. `Comet_Furniture_Village_Coffin`, `Comet_VoidInvasion_Portal`, or your custom block). Omit or leave blank to use the default comet stone. Per-theme reward overrides are optional per-theme entries in the same `themes.json` (e.g. a **rewardOverride** object keyed by tier number).
 
-```json
-"skeleton_siege": {
-  "displayName": "Skeleton Siege",
-  "naturalSpawn": false,      // Won't spawn naturally, only via command
-  "tiers": [2, 3],
-  "waves": [...],
-  "rewardOverride": {
-    "2": {
-      "drops": [...],
-      "bonusDrops": [...]
-    }
-  }
-}
-```
-
-Use `"naturalSpawn": false` on themes you're testing to prevent them from spawning naturally.
+Use `"naturalSpawn": false` on themes in `themes.json` to prevent them from spawning naturally.
 
 ### Creating Custom Themes
 
-Want to make your own encounters? Edit `comet_themes_and_monster_groups.json`. You can:
+Want to make your own encounters? Edit `themes.json` (monster groups, optional **spawnBlock** and **rewardOverride** per theme). You can:
 
 - Define multiple waves with different enemy compositions
 - Configure boss waves separately from normal waves
@@ -417,10 +417,11 @@ Mob/boss stat scaling is global now via `tierStatScaling` (tier and zone based),
 
 The config is fully JSON - just copy an existing theme, rename it, and start tweaking.
 
-> **Tip for Fixed Spawn Points:** If you're creating a custom theme specifically for fixed spawn points (like boss arenas), set `"naturalSpawn": false` on that theme so it only spawns at your configured locations, not randomly in the world.
+> **Tip:** To restrict a theme to command-spawn or future fixed-spawn use only (e.g. boss arenas), set `"naturalSpawn": false` on that theme so it never appears in random natural spawns.
 
 ## Version Notes
 
+- `v4.0.0`: Custom spawn blocks (coffin/portal or any block via `spawnBlock` in themes); reward chest in front of non–comet-stone assets, asset removed when chest expires; configurable wave mob loot (`disableWaveMobLoot`); beam raised above portal; chest opens only when clicking the chest block; full docs and JSON examples for custom assets.
 - `v3.3.0`: Added configurable comet chat and banner messages with placeholders, plus an in-game Voile documentation page for configuration help.
 - `v3.2.4`: Generic claim protection integration.
 - `v3.2.3`: Improved wave timer reliability, fixed stuck wave progression in edge cases, and improved kill-count tracking compatibility with mob/combat overhaul mods.

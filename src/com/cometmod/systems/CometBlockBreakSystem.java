@@ -24,7 +24,7 @@ import javax.annotation.Nullable;
 public class CometBlockBreakSystem extends EntityEventSystem<EntityStore, BreakBlockEvent> {
 
     private final CometWaveManager waveManager;
-    private static final java.util.logging.Logger LOGGER = java.util.logging.Logger.getLogger("CometBlockBreakSystem");
+    private static final java.util.logging.Logger LOGGER = java.util.logging.Logger.getLogger(CometBlockBreakSystem.class.getName());
 
     public CometBlockBreakSystem(CometWaveManager waveManager) {
         super(BreakBlockEvent.class);
@@ -43,12 +43,13 @@ public class CometBlockBreakSystem extends EntityEventSystem<EntityStore, BreakB
             @Nonnull CommandBuffer<EntityStore> commandBuffer,
             @Nonnull BreakBlockEvent event) {
 
-        String blockTypeId = event.getBlockType().getId();
-        if (!blockTypeId.startsWith("Comet_Stone")) {
+        com.hypixel.hytale.math.vector.Vector3i blockPos = event.getTargetBlock();
+        if (blockPos == null) return;
+
+        // Position-based: only treat as comet if this position is registered
+        if (waveManager.getRegisteredBlockPos(blockPos.x, blockPos.y, blockPos.z) == null) {
             return;
         }
-
-        com.hypixel.hytale.math.vector.Vector3i blockPos = event.getTargetBlock();
 
         // Only the owner can break the crystal
         java.util.UUID owner = waveManager.getCometOwner(blockPos);

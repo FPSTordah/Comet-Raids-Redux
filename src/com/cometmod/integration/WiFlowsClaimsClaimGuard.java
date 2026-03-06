@@ -12,7 +12,7 @@ import java.util.logging.Logger;
  */
 public final class WiFlowsClaimsClaimGuard {
 
-    private static final Logger LOGGER = Logger.getLogger("WiFlowsClaimsClaimGuard");
+    private static final Logger LOGGER = Logger.getLogger(WiFlowsClaimsClaimGuard.class.getName());
 
     private static Method getClaimOwnerMethod;
     private static boolean warnedMissingApi;

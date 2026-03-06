@@ -9,17 +9,73 @@ import java.util.regex.Pattern;
  * Shared lightweight JSON helpers used by config parsing.
  * <p>
  * This is intentionally minimal (no external dependencies) and is designed for
- * the current config schema shape used by Comet mod files.
+ * the current config schema shape used by Comet mod files. Key lookups use
+ * indexOfKey to avoid matching key names that appear inside string values.
  */
 public final class ConfigJson {
 
     private ConfigJson() {
     }
 
+    /**
+     * Find the index of a JSON key ("key") only when it appears as a real key (not inside a string value).
+     * Requires the key to be preceded by { or , and followed by optional whitespace and :.
+     */
+    static int indexOfKey(String json, String key) {
+        if (json == null || key == null) return -1;
+        String searchKey = "\"" + key + "\"";
+        int pos = 0;
+        boolean inString = false;
+        int i = 0;
+        while (i < json.length() - searchKey.length()) {
+            char c = json.charAt(i);
+            if (c == '"' && (i == 0 || json.charAt(i - 1) != '\\')) {
+                if (!inString) {
+                    // Check for key at this quote before toggling inString (keys start with ")
+                    if (json.regionMatches(i, searchKey, 0, searchKey.length())) {
+                        int before = i - 1;
+                        while (before >= 0 && (json.charAt(before) == ' ' || json.charAt(before) == '\t' || json.charAt(before) == '\n' || json.charAt(before) == '\r')) before--;
+                        if (before < 0 || json.charAt(before) == '{' || json.charAt(before) == ',' || json.charAt(before) == '"') {
+                            int after = i + searchKey.length();
+                            while (after < json.length() && (json.charAt(after) == ' ' || json.charAt(after) == '\t' || json.charAt(after) == '\n' || json.charAt(after) == '\r')) after++;
+                            if (after < json.length() && json.charAt(after) == ':') return i;
+                        }
+                    }
+                    inString = true;
+                    i++;
+                    continue;
+                }
+                inString = false;
+                i++;
+                continue;
+            }
+            if (inString) {
+                i++;
+                continue;
+            }
+            if (json.regionMatches(i, searchKey, 0, searchKey.length())) {
+                int before = i - 1;
+                while (before >= 0 && (json.charAt(before) == ' ' || json.charAt(before) == '\t' || json.charAt(before) == '\n' || json.charAt(before) == '\r')) before--;
+                if (before >= 0) {
+                    char b = json.charAt(before);
+                    // Allow { or , (standard), or " (previous value's closing quote - handles missing comma between keys)
+                    if (b != '{' && b != ',' && b != '"') {
+                        i++;
+                        continue;
+                    }
+                }
+                int after = i + searchKey.length();
+                while (after < json.length() && (json.charAt(after) == ' ' || json.charAt(after) == '\t' || json.charAt(after) == '\n' || json.charAt(after) == '\r')) after++;
+                if (after < json.length() && json.charAt(after) == ':') return i;
+            }
+            i++;
+        }
+        return -1;
+    }
+
     public static String extractJsonObject(String json, String key) {
         try {
-            String searchKey = "\"" + key + "\"";
-            int keyIndex = json.indexOf(searchKey);
+            int keyIndex = indexOfKey(json, key);
             if (keyIndex == -1) {
                 return null;
             }
@@ -42,8 +98,7 @@ public final class ConfigJson {
 
     public static String extractJsonArray(String json, String key) {
         try {
-            String searchKey = "\"" + key + "\"";
-            int keyIndex = json.indexOf(searchKey);
+            int keyIndex = indexOfKey(json, key);
             if (keyIndex == -1) {
                 return null;
             }
@@ -186,8 +241,7 @@ public final class ConfigJson {
 
     public static String extractStringValue(String json, String key) {
         try {
-            String searchKey = "\"" + key + "\"";
-            int keyIndex = json.indexOf(searchKey);
+            int keyIndex = indexOfKey(json, key);
             if (keyIndex == -1) {
                 return null;
             }

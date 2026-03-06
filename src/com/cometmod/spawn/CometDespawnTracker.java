@@ -24,7 +24,7 @@ import java.util.logging.Logger;
  */
 public class CometDespawnTracker {
     
-    private static final Logger LOGGER = Logger.getLogger("CometDespawnTracker");
+    private static final Logger LOGGER = Logger.getLogger(CometDespawnTracker.class.getName());
     private static final String DATA_FILE_NAME = "comet_despawns.json";
     
     // Track active comets: position -> spawn timestamp (milliseconds since epoch)

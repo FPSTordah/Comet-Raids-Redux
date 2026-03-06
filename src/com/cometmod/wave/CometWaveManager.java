@@ -31,7 +31,7 @@ import java.util.logging.Logger;
  * Manages comet wave spawning, combat, and rewards.
  */
 public class CometWaveManager {
-    private static final Logger LOGGER = Logger.getLogger("CometWaveManager");
+    private static final Logger LOGGER = Logger.getLogger(CometWaveManager.class.getName());
 
     private com.hypixel.hytale.server.core.plugin.PluginBase plugin;
 
@@ -57,13 +57,6 @@ public class CometWaveManager {
     // Track current/forced theme IDs for comet blocks.
     private final Map<Vector3i, String> cometThemes = waveState.cometThemes();
     private final Map<Vector3i, String> forcedThemes = waveState.forcedThemes();
-
-    // Tier timeouts in milliseconds (per wave: adds + boss)
-    private static final long TIER1_TIMEOUT = 90000; // 90 seconds (Uncommon)
-    private static final long TIER2_TIMEOUT = 150000; // 150 seconds / 2.5 min (Rare)
-    private static final long TIER3_TIMEOUT = 180000; // 180 seconds / 3 min (Epic)
-    private static final long TIER4_TIMEOUT = 240000; // 240 seconds / 4 min (Legendary)
-    private static final long TIER5_TIMEOUT = 300000; // 300 seconds / 5 min (Mythic)
 
     // Max ranged mobs per wave (applies to ALL tiers)
     private static final int MAX_RANGED_PER_WAVE = 1;
@@ -121,12 +114,32 @@ public class CometWaveManager {
 
     /**
      * Get the owner UUID for a specific comet
-     * 
+     *
      * @param blockPos The comet block position
      * @return The owner UUID, or null if not found
      */
     public java.util.UUID getCometOwner(Vector3i blockPos) {
         return cometOwners.get(blockPos);
+    }
+
+    /**
+     * Find the registered comet/replacement position at these coordinates (for USE on themed blocks where map key may differ by instance).
+     */
+    public Vector3i getRegisteredBlockPos(int x, int y, int z) {
+        return waveState.findRegisteredPosition(x, y, z);
+    }
+
+    /** Find a registered position within distance of (x,y,z) so USE on adjacent or multi-block (coffin/portal) still activates. */
+    public Vector3i getRegisteredBlockPosNear(int x, int y, int z, int maxDistance) {
+        return waveState.findRegisteredPositionNear(x, y, z, maxDistance);
+    }
+
+    /** Theme at a registered position (forced theme wins). Used to link USE on themed blocks by position when block ID may vary. */
+    public String getThemeAtPosition(Vector3i blockPos) {
+        if (blockPos == null) return null;
+        String forced = waveState.getForcedTheme(blockPos);
+        if (forced != null && !forced.isBlank()) return forced;
+        return waveState.getTheme(blockPos);
     }
 
     private static class WaveData {
@@ -209,7 +222,7 @@ public class CometWaveManager {
 
             // Get tier-specific timeout
             CometTier tier = cometTiers.getOrDefault(entry.getKey(), CometTier.UNCOMMON);
-            long tierTimeout = getTierTimeout(tier);
+            long tierTimeout = CometWaveRunner.getTierTimeoutMs(tier);
 
             if (elapsedTime >= tierTimeout) {
                 LOGGER.info("[checkTimeouts] TIMEOUT for wave at " + entry.getKey() +
@@ -310,10 +323,15 @@ public class CometWaveManager {
     }
 
     public void handleCometActivation(Store<EntityStore> store, Ref<EntityStore> playerRef, Vector3i blockPos) {
-        // Check block state first to see if it's already completed (persists across
-        // relogs)
+        if (CometConfig.DEBUG) {
+            LOGGER.info("[CometDebug] handleCometActivation at " + blockPos);
+        }
         com.hypixel.hytale.server.core.universe.world.World world = ((com.hypixel.hytale.server.core.universe.world.storage.EntityStore) store
                 .getExternalData()).getWorld();
+
+        // Use canonical registered position so map lookups work (themed blocks may use a different Vector3i instance; allow nearby for multi-block)
+        Vector3i canonical = waveState.findRegisteredPositionNear(blockPos.x, blockPos.y, blockPos.z, 4);
+        if (canonical != null) blockPos = canonical;
 
         CometConfig config = CometConfig.getInstance();
         if (config != null && !config.isRaidEnabledInWorld(world)) {
@@ -351,11 +369,15 @@ public class CometWaveManager {
             }
         }
 
-        // Try to determine tier from block type
-        CometTier tier = determineTierFromBlock(world, blockPos);
-        if (tier == null) {
-            tier = CometTier.UNCOMMON; // Default
+        // Tier from block type (comet block) or from registration (themed replacement: coffin/portal/volcano)
+        com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType blockTypeAt = world.getBlockType(blockPos.x, blockPos.y, blockPos.z);
+        CometTier tier;
+        if (blockTypeAt != null && blockTypeAt.getId().startsWith("Comet_Stone_")) {
+            tier = determineTierFromBlock(world, blockPos);
+        } else {
+            tier = waveState.getTierOrDefault(blockPos, CometTier.UNCOMMON);
         }
+        if (tier == null) tier = CometTier.UNCOMMON;
         tier = CometConfig.clampUnavailableTier(tier);
         cometTiers.put(blockPos, tier);
 
@@ -521,6 +543,9 @@ public class CometWaveManager {
     }
 
     private void spawnWave(Store<EntityStore> store, Ref<EntityStore> playerRef, Vector3i blockPos, CometTier tier) {
+        if (CometConfig.DEBUG) {
+            LOGGER.info("[CometDebug] spawnWave at " + blockPos + " tier=" + (tier != null ? tier.getName() : "null"));
+        }
         NPCPlugin npcPlugin = NPCPlugin.get();
         if (npcPlugin == null) {
             LOGGER.warning("NPCPlugin not available!");
@@ -541,6 +566,9 @@ public class CometWaveManager {
             LOGGER.severe("Could not resolve a theme for tier " + tier.getName() + " at " + blockPos);
             activeWaves.remove(blockPos);
             return;
+        }
+        if (CometConfig.DEBUG) {
+            LOGGER.info("[CometDebug] spawnWave theme=" + themeId + " at " + blockPos);
         }
 
         cometThemes.put(blockPos, themeId);
@@ -697,23 +725,6 @@ public class CometWaveManager {
     /**
      * Get tier-specific timeout in milliseconds
      */
-    private long getTierTimeout(CometTier tier) {
-        switch (tier) {
-            case UNCOMMON:
-                return TIER1_TIMEOUT;
-            case RARE:
-                return TIER2_TIMEOUT;
-            case EPIC:
-                return TIER3_TIMEOUT;
-            case LEGENDARY:
-                return TIER4_TIMEOUT;
-            case MYTHIC:
-                return TIER5_TIMEOUT;
-            default:
-                return TIER1_TIMEOUT;
-        }
-    }
-
     public void updateWaveCountdown(Store<EntityStore> store, Ref<EntityStore> playerRef, WaveData waveData) {
         if (store == null) {
             LOGGER.warning("Cannot update wave countdown at " + waveData.blockPos + ": store is null");
@@ -976,10 +987,7 @@ public class CometWaveManager {
         // Despawn all spawned mobs (wave 1 and/or boss) when the wave fails
         int despawned = 0;
         try {
-            java.lang.reflect.Method takeMethod = store.getClass().getDeclaredMethod("takeCommandBuffer");
-            takeMethod.setAccessible(true);
-            com.hypixel.hytale.component.CommandBuffer<EntityStore> cb = (com.hypixel.hytale.component.CommandBuffer<EntityStore>) takeMethod
-                    .invoke(store);
+            com.hypixel.hytale.component.CommandBuffer<EntityStore> cb = com.cometmod.util.CommandBufferUtil.take(store);
             if (cb != null) {
                 for (Ref<EntityStore> mobRef : waveData.spawnedMobs) {
                     if (mobRef != null && mobRef.isValid()) {
@@ -991,9 +999,7 @@ public class CometWaveManager {
                         }
                     }
                 }
-                java.lang.reflect.Method consumeMethod = cb.getClass().getDeclaredMethod("consume");
-                consumeMethod.setAccessible(true);
-                consumeMethod.invoke(cb);
+                com.cometmod.util.CommandBufferUtil.consume(cb);
             }
         } catch (Exception e) {
             LOGGER.warning("Could not get CommandBuffer to despawn mobs on wave fail: " + e.getMessage());
@@ -1500,8 +1506,8 @@ public class CometWaveManager {
             allItems.add(new com.hypixel.hytale.server.core.inventory.ItemStack(shardId, 5));
             droppedItemIds.add(shardId + " x5");
 
-            // Preferred path: spawn shared reward chest and let players loot it directly.
-            boolean chestSpawned = CometLootChestService.getInstance().spawnRewardChest(world, blockPos, allItems);
+            // Spawn only the chest; themed object (coffin/portal/volcano) was already there from event start. Default: break comet and place chest.
+            boolean chestSpawned = CometLootChestService.getInstance().spawnChestOnlyAfterWaveComplete(world, blockPos, allItems, themeId);
             if (chestSpawned) {
                 LOGGER.info("[CometWaveManager] Spawned timed reward chest at " + blockPos +
                         " with " + allItems.size() + " item stacks (expires 20s after close).");
@@ -1659,6 +1665,26 @@ public class CometWaveManager {
      */
     public String[] getThemeNames() {
         return WaveThemeProvider.getAllThemeNames();
+    }
+
+    /**
+     * Returns true if the given entity ref is a mob spawned as part of an active comet wave.
+     * Used to decide whether to suppress loot drops when disableWaveMobLoot is enabled.
+     */
+    public boolean isCometWaveMob(Store<EntityStore> store, Ref<EntityStore> mobRef) {
+        if (store == null || mobRef == null || !mobRef.isValid()) return false;
+        java.util.UUID mobUuid = getEntityUuid(store, mobRef);
+        for (WaveData waveData : activeWaves.values()) {
+            for (Ref<EntityStore> ref : waveData.spawnedMobs) {
+                if (ref == null) continue;
+                if (ref == mobRef || (ref.isValid() && ref.equals(mobRef))) return true;
+                if (mobUuid != null && ref.isValid()) {
+                    Store<EntityStore> compareStore = waveData.store != null ? waveData.store : ref.getStore();
+                    if (mobUuid.equals(getEntityUuid(compareStore, ref))) return true;
+                }
+            }
+        }
+        return false;
     }
 
     public void handleMobDeath(

@@ -25,7 +25,7 @@ import java.util.logging.Logger;
 
 public class CometMarkerProvider implements WorldMapManager.MarkerProvider {
 
-    private static final Logger LOGGER = Logger.getLogger("CometMarkerProvider");
+    private static final Logger LOGGER = Logger.getLogger(CometMarkerProvider.class.getName());
     public static final CometMarkerProvider INSTANCE = new CometMarkerProvider();
 
     private CometMarkerProvider() {

@@ -26,7 +26,7 @@ import java.util.logging.Logger;
  */
 public class CometReloadCommand extends AbstractWorldCommand {
 
-    private static final Logger LOGGER = Logger.getLogger("CometReloadCommand");
+    private static final Logger LOGGER = Logger.getLogger(CometReloadCommand.class.getName());
 
     public CometReloadCommand() {
         super("reload", "Reloads the Comet Mod configuration from file");

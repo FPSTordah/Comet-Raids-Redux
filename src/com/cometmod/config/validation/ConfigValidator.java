@@ -26,7 +26,7 @@ public final class ConfigValidator {
     public static ConfigValidationReport validateCometConfig(String json) {
         ConfigValidationReport report = new ConfigValidationReport();
         if (json == null || json.trim().isEmpty()) {
-            report.error("comet_config.json is empty. Restore a valid config file.");
+            report.error("config.json is empty. Restore a valid config file.");
             return report;
         }
 

@@ -14,7 +14,7 @@ import java.util.logging.Logger;
  */
 public final class WorldProtectRegionGuard {
 
-    private static final Logger LOGGER = Logger.getLogger("WorldProtectRegionGuard");
+    private static final Logger LOGGER = Logger.getLogger(WorldProtectRegionGuard.class.getName());
 
     private static Method regionServiceAccessor;
     private static Method primaryRegionAccessor;

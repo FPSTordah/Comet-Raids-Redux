@@ -17,6 +17,7 @@ public class CometCommand extends AbstractCommandCollection {
     public CometCommand() {
         super("comet", "Comet mod commands");
         addSubCommand(new CometSpawnCommand());
+        addSubCommand(new CometThemesCommand());
         addSubCommand(new CometTestCommand());
         addSubCommand(new CometZoneCommand());
         addSubCommand(new CometDestroyAllCommand());

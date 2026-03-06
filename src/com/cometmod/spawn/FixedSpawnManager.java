@@ -37,7 +37,7 @@ import java.util.logging.Logger;
  */
 public class FixedSpawnManager {
 
-    private static final Logger LOGGER = Logger.getLogger("FixedSpawnManager");
+    private static final Logger LOGGER = Logger.getLogger(FixedSpawnManager.class.getName());
     private static final String FILE_NAME = "fixed_spawns.json";
 
     private final List<SpawnPoint> spawnPoints = new ArrayList<>();
@@ -64,6 +64,10 @@ public class FixedSpawnManager {
                     Files.writeString(file.toPath(), merged, StandardCharsets.UTF_8);
                     LOGGER.info("Merged fixed_spawns.json on boot (added missing spawns[] key).");
                     json = merged;
+                    spawnsArray = extractJsonArray(json, "spawns");
+                } else {
+                    createDefaultFixedSpawnsFile(file);
+                    json = "{\n  \"spawns\": []\n}\n";
                     spawnsArray = extractJsonArray(json, "spawns");
                 }
             }
@@ -196,15 +200,18 @@ public class FixedSpawnManager {
     }
 
     private File resolveConfigFile() {
+        File configDir = CometConfig.getConfigDirectory();
+        if (configDir != null) {
+            File f = new File(configDir, FILE_NAME);
+            return f;
+        }
         try {
             CometModPlugin plugin = CometModPlugin.getInstance();
             if (plugin != null) {
                 Path pluginFile = plugin.getFile();
                 if (pluginFile != null && pluginFile.getParent() != null) {
                     File inPluginDir = pluginFile.getParent().resolve(FILE_NAME).toFile();
-                    if (inPluginDir.exists()) {
-                        return inPluginDir;
-                    }
+                    return inPluginDir;
                 }
             }
         } catch (Exception ignored) {

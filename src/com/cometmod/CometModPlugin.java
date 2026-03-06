@@ -1,6 +1,5 @@
 package com.cometmod;
 
-import com.cometmod.*;
 import com.cometmod.commands.*;
 import com.cometmod.loot.*;
 import com.cometmod.services.*;
@@ -18,7 +17,7 @@ import java.util.logging.Logger;
 
 public class CometModPlugin extends JavaPlugin {
 
-    private static final Logger LOGGER = Logger.getLogger("CometMod");
+    private static final Logger LOGGER = Logger.getLogger(CometModPlugin.class.getName());
     private final CometWaveManager waveManager = new CometWaveManager();
     private static CometModPlugin instance;
     private java.util.concurrent.ScheduledFuture<?> timeoutTask;
@@ -107,6 +106,8 @@ public class CometModPlugin extends JavaPlugin {
         getCodecRegistry(Interaction.CODEC).register("Comet_Stone_Legendary_Activate",
                 CometStoneActivateInteraction.class, CometStoneActivateInteraction.CODEC);
         getCodecRegistry(Interaction.CODEC).register("Comet_Stone_Mythic_Activate",
+                CometStoneActivateInteraction.class, CometStoneActivateInteraction.CODEC);
+        getCodecRegistry(Interaction.CODEC).register("Comet_Activate",
                 CometStoneActivateInteraction.class, CometStoneActivateInteraction.CODEC);
         getCodecRegistry(Interaction.CODEC).register("Comet_OpenRewardChest",
                 CometOpenRewardChestInteraction.class, CometOpenRewardChestInteraction.CODEC);
@@ -208,6 +209,18 @@ public class CometModPlugin extends JavaPlugin {
         }
 
         try {
+            getEntityStoreRegistry().registerSystem(new CometBlockDamageActivationSystem(waveManager));
+        } catch (Exception e) {
+            LOGGER.warning("Failed to register CometBlockDamageActivationSystem: " + e.getMessage());
+        }
+
+        try {
+            getEntityStoreRegistry().registerSystem(new CometBlockEventSystem(waveManager));
+        } catch (Exception e) {
+            LOGGER.warning("Failed to register CometBlockEventSystem: " + e.getMessage());
+        }
+
+        try {
             getEntityStoreRegistry().registerSystem(new CometStatModifierSystem());
         } catch (Exception e) {
             LOGGER.warning("Failed to register CometStatModifierSystem: " + e.getMessage());
@@ -220,15 +233,15 @@ public class CometModPlugin extends JavaPlugin {
         }
 
         try {
-            getEntityStoreRegistry().registerSystem(new CometLootChestNeighborUseSystem());
-        } catch (Exception e) {
-            LOGGER.warning("Failed to register CometLootChestNeighborUseSystem: " + e.getMessage());
-        }
-
-        try {
             getEntityStoreRegistry().registerSystem(new CometLootChestBreakCleanupSystem());
         } catch (Exception e) {
             LOGGER.warning("Failed to register CometLootChestBreakCleanupSystem: " + e.getMessage());
+        }
+
+        try {
+            getEntityStoreRegistry().registerSystem(new CometWaveLootBlockerSystem(waveManager));
+        } catch (Exception e) {
+            LOGGER.warning("Failed to register CometWaveLootBlockerSystem: " + e.getMessage());
         }
 
         this.fallingSystem = null;

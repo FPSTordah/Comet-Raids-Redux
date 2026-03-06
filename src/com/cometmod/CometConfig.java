@@ -1,6 +1,5 @@
 package com.cometmod;
 
-import com.cometmod.*;
 import com.cometmod.commands.*;
 import com.cometmod.services.*;
 import com.cometmod.spawn.*;
@@ -38,6 +37,7 @@ import com.cometmod.config.validation.ConfigValidator;
 import com.cometmod.config.model.ThemeConfig;
 import com.cometmod.config.parser.ThemeConfigParser;
 import com.cometmod.config.parser.ThemeConfigWriter;
+import com.cometmod.config.ThemeConfigLoader;
 import com.cometmod.config.model.TierSettings;
 import com.cometmod.config.model.TierStatScalingConfig;
 import com.cometmod.config.model.TierRewards;
@@ -56,12 +56,24 @@ import com.hypixel.hytale.server.core.plugin.PluginManager;
  */
 public class CometConfig {
 
-    private static final Logger LOGGER = Logger.getLogger("CometConfig");
-    private static final String CONFIG_FILE_NAME = "comet_config.json";
-    private static final String THEMES_CONFIG_FILE_NAME = "comet_themes_and_monster_groups.json";
+    private static final Logger LOGGER = Logger.getLogger(CometConfig.class.getName());
+    private static final String CONFIG_FILE_NAME = "config.json";
+    private static final String THEMES_FILE_NAME = "themes.json";
+    /** Legacy file names; merged into new files on first run if new files are missing. */
+    private static final String LEGACY_CONFIG_FILE_NAME = "comet_config.json";
+    private static final String LEGACY_THEMES_FILE_NAME = "comet_themes_and_monster_groups.json";
     private static final String ENDGAME_QOL_GROUP = "Config";
     private static final String ENDGAME_QOL_NAME = "Endgame&QoL";
     private static final String ENDGAME_QOL_PLUGIN_CLASS = "endgame.plugin.EndgameQoL";
+
+    /** Block radius for "use comet" detection (distance from registered comet block to allow starting wave). */
+    public static final int COMET_USE_NEAR_RADIUS = 4;
+
+    /** Half-size of the "asset box": when we register a comet we also register every block in a (2*radius+1)^3 box so any part of a multi-block asset (e.g. chest, coffin) triggers the comet. */
+    public static final int COMET_ASSET_BOX_RADIUS = 2;
+
+    /** Set to true to log [CometDebug] messages to console (activation, waves, placement). Remember to set false before release. */
+    public static final boolean DEBUG = true;
 
     // Singleton instance for global access
     private static CometConfig instance;
@@ -80,6 +92,12 @@ public class CometConfig {
 
     // Global comets setting - if true, any player can trigger any comet (not just the owner)
     public boolean globalComets = false;
+
+    /** If true, inject Use interaction into clean-slate spawn blocks (no Use in asset) so F activates comets. If false, skip injection (avoids loadAssets; use hit-to-activate for those blocks). */
+    public boolean injectUseForCleanSlateBlocks = false;
+
+    /** If true, mobs spawned in comet waves do not drop loot from their loot tables (rewards come only from the comet chest). If false, wave mobs use their normal droplist on death. */
+    public boolean disableWaveMobLoot = true;
 
     // Message templates (chat + banner) - configurable, BossArena style
     // Placeholders are documented in the README section of the config
@@ -157,6 +175,15 @@ public class CometConfig {
     }
 
     /**
+     * Directory where config.json, themes.json, fixed_spawns.json live (e.g. .../CometMod/).
+     * Use this so all config files are in the same place.
+     */
+    public static File getConfigDirectory() {
+        File cf = getConfigFile();
+        return (cf != null && cf.getParentFile() != null) ? cf.getParentFile() : null;
+    }
+
+    /**
      * Get config file location
      */
     private static File getConfigFile() {
@@ -215,30 +242,56 @@ public class CometConfig {
         return new File(fallbackModFolder, CONFIG_FILE_NAME);
     }
 
-    private static File getThemesConfigFile(File configFile) {
+    private static File getLegacyConfigFile(File configFile) {
         File parent = configFile != null ? configFile.getParentFile() : null;
         if (parent == null) {
-            return new File(THEMES_CONFIG_FILE_NAME);
+            return new File(LEGACY_CONFIG_FILE_NAME);
         }
-        return new File(parent, THEMES_CONFIG_FILE_NAME);
+        return new File(parent, LEGACY_CONFIG_FILE_NAME);
+    }
+
+    private static File getLegacyThemesFile(File configFile) {
+        File parent = configFile != null ? configFile.getParentFile() : null;
+        if (parent == null) {
+            return new File(LEGACY_THEMES_FILE_NAME);
+        }
+        return new File(parent, LEGACY_THEMES_FILE_NAME);
     }
 
     /**
      * Load configuration from file, or create with defaults if file doesn't exist.
-     * Config file is the single source of truth after creation.
+     * If new config files are missing but legacy files exist, merges legacy into new files and renames legacy to .migrated.
      */
     public static CometConfig load() {
         refreshTier5Availability();
         File configFile = getConfigFile();
+        File legacyConfig = getLegacyConfigFile(configFile);
+        File legacyThemes = getLegacyThemesFile(configFile);
+
+        // Migrate legacy config into new files so users keep their settings
+        if (!configFile.exists() || !configFile.isFile()) {
+            if (legacyConfig.exists() && legacyConfig.isFile()) {
+                CometConfig config = migrateFromLegacyFiles(configFile, legacyConfig, legacyThemes);
+                if (config != null) {
+                    instance = config;
+                    return config;
+                }
+            }
+        }
+
         CometConfig config = new CometConfig();
 
         if (configFile.exists() && configFile.isFile()) {
             try {
                 String content = new String(java.nio.file.Files.readAllBytes(configFile.toPath()));
-                logValidationReport("comet_config.json", ConfigValidator.validateCometConfig(content));
-                config = parseJson(content);
-                loadThemesFromSeparateFile(config, configFile);
+                ConfigValidationReport configValidation = ConfigValidator.validateCometConfig(content);
+                logValidationReport(CONFIG_FILE_NAME, configValidation);
+                config = parseJson(content, false);
+                ThemeConfigLoader.loadThemes(config, configFile);
                 syncConfigFilesOnBoot(config, configFile);
+                if (!configValidation.isClean()) {
+                    forceWriteConfigAndThemes(config, configFile);
+                }
                 LOGGER.info("Loaded Comet Mod configuration from: " + configFile.getAbsolutePath());
 
                 // Warn if no themes
@@ -247,16 +300,16 @@ public class CometConfig {
                 }
 
             } catch (Exception e) {
-                LOGGER.warning("Failed to load config file, using defaults: " + e.getMessage());
+                LOGGER.warning("Failed to load config file '" + configFile.getAbsolutePath() + "', using defaults: " + e.getMessage());
                 e.printStackTrace();
                 config = createDefaultConfig();
-                saveThemesConfig(config, getThemesConfigFile(configFile));
+                ThemeConfigLoader.saveThemes(config, ThemeConfigLoader.getThemesFile(configFile));
                 config.save();
             }
         } else {
             LOGGER.info("Config file not found, creating default config at: " + configFile.getAbsolutePath());
             config = createDefaultConfig();
-            saveThemesConfig(config, getThemesConfigFile(configFile));
+            ThemeConfigLoader.saveThemes(config, ThemeConfigLoader.getThemesFile(configFile));
             config.save();
         }
 
@@ -341,6 +394,71 @@ public class CometConfig {
     }
 
     /**
+     * Merge legacy config files into the new layout and save. Renames legacy files to .migrated.
+     * Call when config.json is missing but comet_config.json (and optionally comet_themes_and_monster_groups.json) exist.
+     */
+    private static CometConfig migrateFromLegacyFiles(File newConfigFile, File legacyConfigFile, File legacyThemesFile) {
+        try {
+            String legacyContent = new String(java.nio.file.Files.readAllBytes(legacyConfigFile.toPath()));
+            logValidationReport(LEGACY_CONFIG_FILE_NAME, ConfigValidator.validateCometConfig(legacyContent));
+            CometConfig config = parseJson(legacyContent, true);
+
+            // If legacy themes file exists, it overrides themes from comet_config.json
+            if (legacyThemesFile.exists() && legacyThemesFile.isFile()) {
+                String themesContent = new String(java.nio.file.Files.readAllBytes(legacyThemesFile.toPath()));
+                String themesBlock = extractJsonObject(themesContent, "themes");
+                if (themesBlock != null && !themesBlock.isBlank()) {
+                    Map<String, ThemeConfig> fromThemesFile = ThemeConfigParser.parseThemes(themesContent);
+                    if (!fromThemesFile.isEmpty()) {
+                        config.themes = fromThemesFile;
+                        config.themeList = new ArrayList<>(config.themes.values());
+                    }
+                    TierStatScalingConfig fromFile = ThemeConfigParser.parseTierStatScaling(themesContent);
+                    if (fromFile != null) {
+                        config.tierStatScaling = fromFile;
+                    }
+                }
+            }
+
+            config.ensureDefaultsForPersistence();
+
+            File parent = newConfigFile.getParentFile();
+            if (parent != null && !parent.exists()) {
+                parent.mkdirs();
+            }
+
+            try (FileWriter w = new FileWriter(newConfigFile)) {
+                w.write(config.buildConfigJsonForPersistence());
+                w.flush();
+            }
+            ThemeConfigLoader.saveThemes(config, ThemeConfigLoader.getThemesFile(newConfigFile));
+
+            renameToMigrated(legacyConfigFile);
+            if (legacyThemesFile.exists()) {
+                renameToMigrated(legacyThemesFile);
+            }
+
+            LOGGER.info("Migrated legacy config to " + CONFIG_FILE_NAME + ", " + THEMES_FILE_NAME + ". Old files renamed to .migrated");
+            return config;
+        } catch (Exception e) {
+            LOGGER.warning("Failed to migrate legacy config: " + e.getMessage());
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    private static void renameToMigrated(File file) {
+        try {
+            File target = new File(file.getParentFile(), file.getName() + ".migrated");
+            if (file.renameTo(target)) {
+                LOGGER.info("Renamed " + file.getName() + " to " + target.getName());
+            }
+        } catch (Exception e) {
+            LOGGER.warning("Could not rename " + file.getName() + " to .migrated: " + e.getMessage());
+        }
+    }
+
+    /**
      * Reload configuration from file
      */
     public static CometConfig reload() {
@@ -349,9 +467,10 @@ public class CometConfig {
     }
 
     /**
-     * Parse JSON configuration
+     * Parse JSON configuration.
+     * @param includeThemesFromJson when true, parse themes and tierStatScaling from json (used when migrating from legacy comet_config.json)
      */
-    private static CometConfig parseJson(String json) {
+    private static CometConfig parseJson(String json, boolean includeThemesFromJson) {
         CometConfig config = new CometConfig();
 
         try {
@@ -383,6 +502,12 @@ public class CometConfig {
 
             Boolean naturalSpawnsEnabled = extractBooleanValue(parseFrom, "naturalSpawnsEnabled");
             if (naturalSpawnsEnabled != null) config.naturalSpawnsEnabled = naturalSpawnsEnabled;
+
+            Boolean injectUseForCleanSlateBlocks = extractBooleanValue(parseFrom, "injectUseForCleanSlateBlocks");
+            if (injectUseForCleanSlateBlocks != null) config.injectUseForCleanSlateBlocks = injectUseForCleanSlateBlocks;
+
+            Boolean disableWaveMobLoot = extractBooleanValue(parseFrom, "disableWaveMobLoot");
+            if (disableWaveMobLoot != null) config.disableWaveMobLoot = disableWaveMobLoot;
 
             String disabledWorldsArray = extractJsonArray(parseFrom, "disabledWorlds");
             if (disabledWorldsArray != null) {
@@ -432,10 +557,16 @@ public class CometConfig {
             v = com.cometmod.config.parser.ConfigJson.extractStringValue(messageSource, "msgWaveCompleteChatItemPrefix");
             if (v != null && !v.isEmpty()) config.msgWaveCompleteChatItemPrefix = v;
 
-            // Parse themes using ThemeConfigParser
-            config.themes = ThemeConfigParser.parseThemes(json);
-            config.themeList = new ArrayList<>(config.themes.values());
-            config.themesLoaded = !config.themes.isEmpty();
+            // Themes: from this json when migrating from legacy; otherwise loaded later from themes.json
+            if (includeThemesFromJson) {
+                config.themes = ThemeConfigParser.parseThemes(json);
+                config.themeList = new ArrayList<>(config.themes.values());
+                config.tierStatScaling = ThemeConfigParser.parseTierStatScaling(json);
+                config.themesLoaded = !config.themes.isEmpty();
+            } else {
+                config.themes = new LinkedHashMap<>();
+                config.themeList = new ArrayList<>();
+            }
 
             // Parse tier settings
             config.tierSettings = ThemeConfigParser.parseTierSettings(json);
@@ -523,8 +654,7 @@ public class CometConfig {
             writer.write(json);
             writer.flush();
             LOGGER.info("Saved Comet Mod configuration to: " + configFile.getAbsolutePath());
-
-            saveThemesConfig(this, getThemesConfigFile(configFile));
+            ThemeConfigLoader.saveThemes(this, ThemeConfigLoader.getThemesFile(configFile));
         } catch (IOException e) {
             LOGGER.severe("Failed to save config file: " + e.getMessage());
             e.printStackTrace();
@@ -592,82 +722,30 @@ public class CometConfig {
         return overrides;
     }
 
-    private static void loadThemesFromSeparateFile(CometConfig config, File baseConfigFile) {
-        if (config == null) {
-            return;
-        }
-
-        File themesFile = getThemesConfigFile(baseConfigFile);
-        if (!themesFile.exists() || !themesFile.isFile()) {
-            saveThemesConfig(config, themesFile);
-            return;
-        }
-
-        try {
-            String themesJson = new String(java.nio.file.Files.readAllBytes(themesFile.toPath()));
-            String themesBlock = extractJsonObject(themesJson, "themes");
-            if (themesBlock == null || themesBlock.isBlank()) {
-                LOGGER.warning("Themes file is missing top-level 'themes' object: " + themesFile.getAbsolutePath());
-                return;
-            }
-
-            Map<String, ThemeConfig> externalThemes = ThemeConfigParser.parseThemes(themesJson);
-            if (externalThemes.isEmpty()) {
-                LOGGER.warning("Themes file has no parsed themes, keeping themes from comet_config.json");
-                return;
-            }
-
-            config.themes = externalThemes;
-            config.themeList = new ArrayList<>(externalThemes.values());
-            config.tierStatScaling = ThemeConfigParser.parseTierStatScaling(themesJson);
-            config.themesLoaded = true;
-            LOGGER.info("Loaded themes and monster groups from: " + themesFile.getAbsolutePath()
-                    + " (" + externalThemes.size() + " themes)");
-        } catch (Exception e) {
-            LOGGER.warning("Failed to load themes file, keeping themes from comet_config.json: " + e.getMessage());
-        }
-    }
-
-    private static void saveThemesConfig(CometConfig config, File themesFile) {
-        if (config == null || themesFile == null) {
-            return;
-        }
-
-        try {
-            File parentDir = themesFile.getParentFile();
-            if (parentDir != null && !parentDir.exists()) {
-                parentDir.mkdirs();
-            }
-
-            String json = ThemeConfigWriter.generateThemesAndMonsterGroupsConfig(config.themes, config.tierStatScaling);
-            try (FileWriter writer = new FileWriter(themesFile)) {
-                writer.write(json);
-                writer.flush();
-            }
-        } catch (Exception e) {
-            LOGGER.warning("Failed to save themes file '" + themesFile.getAbsolutePath() + "': " + e.getMessage());
-        }
-    }
-
+    /**
+     * Merge in default values for any missing keys. Preserves user values; adds new defaults on updates.
+     */
     private void ensureDefaultsForPersistence() {
-        if (themes.isEmpty()) {
-            themes = DefaultThemes.generateDefaults();
-            themeList = new ArrayList<>(themes.values());
+        Map<String, ThemeConfig> defaultThemes = DefaultThemes.generateDefaults();
+        for (Map.Entry<String, ThemeConfig> e : defaultThemes.entrySet()) {
+            themes.putIfAbsent(e.getKey(), e.getValue());
         }
-        if (tierSettings.isEmpty()) {
-            tierSettings = DefaultThemes.getDefaultTierSettings();
+        themeList = new ArrayList<>(themes.values());
+        for (Map.Entry<Integer, TierSettings> e : DefaultThemes.getDefaultTierSettings().entrySet()) {
+            tierSettings.putIfAbsent(e.getKey(), e.getValue());
         }
-        if (rewardSettings.isEmpty()) {
-            rewardSettings = getDefaultRewardSettings();
+        for (Map.Entry<Integer, TierRewards> e : getDefaultRewardSettings().entrySet()) {
+            rewardSettings.putIfAbsent(e.getKey(), e.getValue());
         }
-        if (zoneSpawnChances.isEmpty()) {
-            zoneSpawnChances = ZoneSpawnChances.generateDefaults();
+        Map<String, ZoneSpawnChances> defaultZoneChances = ZoneSpawnChances.generateDefaults();
+        for (Map.Entry<String, ZoneSpawnChances> e : defaultZoneChances.entrySet()) {
+            zoneSpawnChances.putIfAbsent(e.getKey(), e.getValue());
         }
-        if (tierInheritanceWeights.isEmpty()) {
-            tierInheritanceWeights = getDefaultTierInheritanceWeights();
+        for (Map.Entry<Integer, TierInheritanceWeights> e : getDefaultTierInheritanceWeights().entrySet()) {
+            tierInheritanceWeights.putIfAbsent(e.getKey(), e.getValue());
         }
-        if (zoneBaseLootPools.isEmpty()) {
-            zoneBaseLootPools = getDefaultZoneBaseLootPools();
+        for (Map.Entry<String, TierRewards> e : getDefaultZoneBaseLootPools().entrySet()) {
+            zoneBaseLootPools.putIfAbsent(e.getKey(), e.getValue());
         }
         if (tierStatScaling == null) {
             tierStatScaling = new TierStatScalingConfig();
@@ -729,7 +807,7 @@ public class CometConfig {
         return ThemeConfigWriter.generateFullConfig(
                 minDelaySeconds, maxDelaySeconds, spawnChance,
                 despawnTimeMinutes, minSpawnDistance, maxSpawnDistance,
-                naturalSpawnsEnabled, globalComets, getDisabledWorlds(),
+                naturalSpawnsEnabled, globalComets, injectUseForCleanSlateBlocks, disableWaveMobLoot, getDisabledWorlds(),
                 themes, tierSettings, rewardSettings, zoneSpawnChances,
                 zoneBaseLootPools, tierInheritanceWeights,
                 protectedZoneSpawnRulesEnabled, protectedZoneDefaultInProtectedRegion,
@@ -752,13 +830,32 @@ public class CometConfig {
             config.ensureDefaultsForPersistence();
 
             String mainConfigJson = config.buildConfigJsonForPersistence();
-            upsertJsonIfChanged(configFile, mainConfigJson, "comet_config.json");
+            upsertJsonIfChanged(configFile, mainConfigJson, CONFIG_FILE_NAME);
 
-            File themesFile = getThemesConfigFile(configFile);
-            String themesJson = ThemeConfigWriter.generateThemesAndMonsterGroupsConfig(config.themes, config.tierStatScaling);
-            upsertJsonIfChanged(themesFile, themesJson, THEMES_CONFIG_FILE_NAME);
+            File themesFile = ThemeConfigLoader.getThemesFile(configFile);
+            String themesJson = ThemeConfigWriter.generateThemesOnlyConfig(config.themes, config.tierStatScaling);
+            upsertJsonIfChanged(themesFile, themesJson, THEMES_FILE_NAME);
         } catch (Exception e) {
             LOGGER.warning("Failed to merge/create config JSON files on boot: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Unconditionally write config.json and themes.json (used when validation failed so repair persists).
+     */
+    private static void forceWriteConfigAndThemes(CometConfig config, File configFile) {
+        try {
+            String mainJson = config.buildConfigJsonForPersistence();
+            java.nio.file.Files.writeString(configFile.toPath(), mainJson != null ? mainJson : "{}");
+            LOGGER.info("Wrote config.json (repair after validation errors).");
+            File themesFile = ThemeConfigLoader.getThemesFile(configFile);
+            String themesJson = ThemeConfigWriter.generateThemesOnlyConfig(config.themes, config.tierStatScaling);
+            if (themesJson != null) {
+                java.nio.file.Files.writeString(themesFile.toPath(), themesJson);
+                LOGGER.info("Wrote themes.json (repair after validation errors).");
+            }
+        } catch (Exception e) {
+            LOGGER.warning("Failed to force-write config/themes: " + e.getMessage());
         }
     }
 
@@ -775,7 +872,12 @@ public class CometConfig {
         boolean existed = file.exists() && file.isFile();
         String currentContent = existed ? java.nio.file.Files.readString(file.toPath()) : "";
 
-        if (normalizeForCompare(currentContent).equals(normalizeForCompare(desiredContent))) {
+        boolean forceRepair = CONFIG_FILE_NAME.equals(logicalName)
+                && desiredContent != null
+                && desiredContent.contains("\"spawnSettings\"")
+                && (currentContent == null || currentContent.trim().isEmpty() || !currentContent.contains("spawnSettings"));
+
+        if (!forceRepair && normalizeForCompare(currentContent).equals(normalizeForCompare(desiredContent))) {
             return;
         }
 
@@ -816,11 +918,23 @@ public class CometConfig {
         return themes;
     }
 
+    public void setThemes(Map<String, ThemeConfig> themes) {
+        this.themes = themes != null ? themes : new LinkedHashMap<>();
+    }
+
     /**
      * Get themes as an ordered list (for random selection)
      */
     public List<ThemeConfig> getThemeList() {
         return themeList;
+    }
+
+    public void setThemeList(List<ThemeConfig> themeList) {
+        this.themeList = themeList != null ? themeList : new ArrayList<>();
+    }
+
+    public void setThemesLoaded(boolean themesLoaded) {
+        this.themesLoaded = themesLoaded;
     }
 
     /**
@@ -877,6 +991,10 @@ public class CometConfig {
 
     public TierStatScalingConfig getTierStatScaling() {
         return tierStatScaling != null ? tierStatScaling : new TierStatScalingConfig();
+    }
+
+    public void setTierStatScaling(TierStatScalingConfig tierStatScaling) {
+        this.tierStatScaling = tierStatScaling != null ? tierStatScaling : new TierStatScalingConfig();
     }
 
     public float[] getTierStatMultipliers(int tier) {

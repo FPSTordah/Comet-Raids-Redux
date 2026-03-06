@@ -24,7 +24,7 @@ import java.util.logging.Logger;
 
 public class CometSpawnTask {
     
-    private static final Logger LOGGER = Logger.getLogger("CometSpawnTask");
+    private static final Logger LOGGER = Logger.getLogger(CometSpawnTask.class.getName());
     
     // Retry configuration for world thread initialization
     private static final int MAX_RETRY_ATTEMPTS = 5;
@@ -330,25 +330,13 @@ public class CometSpawnTask {
                 CometModPlugin.setFallingSystem(fallingSystem);
             }
 
-            com.hypixel.hytale.component.CommandBuffer<EntityStore> commandBuffer = null;
-            try {
-                java.lang.reflect.Method takeCommandBufferMethod = currentStore.getClass().getDeclaredMethod("takeCommandBuffer");
-                takeCommandBufferMethod.setAccessible(true);
-                commandBuffer = (com.hypixel.hytale.component.CommandBuffer<EntityStore>) takeCommandBufferMethod.invoke(currentStore);
-            } catch (Exception e) {
-                return SpawnResult.ERROR;
-            }
+            com.hypixel.hytale.component.CommandBuffer<EntityStore> commandBuffer = com.cometmod.util.CommandBufferUtil.take(currentStore);
+            if (commandBuffer == null) return SpawnResult.ERROR;
 
             java.util.UUID ownerUUID = player.getUuid();
             fallingSystem.spawnFallingComet(playerRef, targetBlockPos, tier, null, currentStore, currentWorld, ownerUUID, zoneId);
 
-            try {
-                java.lang.reflect.Method consumeMethod = commandBuffer.getClass().getDeclaredMethod("consume");
-                consumeMethod.setAccessible(true);
-                consumeMethod.invoke(commandBuffer);
-            } catch (Exception e) {
-                // Ignore
-            }
+            com.cometmod.util.CommandBufferUtil.consume(commandBuffer);
             
             try {
                 CometConfig cfg = CometConfig.getInstance();

@@ -29,7 +29,7 @@ import java.util.logging.Logger;
 
 public class CometFallingSystem {
 
-    private static final Logger LOGGER = Logger.getLogger("CometFallingSystem");
+    private static final Logger LOGGER = Logger.getLogger(CometFallingSystem.class.getName());
 
     // Despawn time in minutes (configurable, default 30) - supports decimal values
     private static double despawnTimeMinutes = 30.0;
@@ -354,7 +354,8 @@ public class CometFallingSystem {
                     .getAsset(projectileConfigName);
 
             if (projectileConfig == null) {
-                LOGGER.warning("Projectile config not found: " + projectileConfigName);
+                LOGGER.warning("Projectile config not found: " + projectileConfigName + "; placing spawn block directly.");
+                spawnCometBlock(targetWorld, targetBlockPos, store, tier, themeId, ownerUUID, zoneId);
                 return;
             }
 
@@ -370,20 +371,9 @@ public class CometFallingSystem {
             // Generate UUID for tracking
             UUID projectileUUID = UUID.randomUUID();
 
-            // Get command buffer
-            com.hypixel.hytale.component.CommandBuffer<EntityStore> commandBuffer = null;
-            try {
-                java.lang.reflect.Method takeCommandBufferMethod = store.getClass()
-                        .getDeclaredMethod("takeCommandBuffer");
-                takeCommandBufferMethod.setAccessible(true);
-                commandBuffer = (com.hypixel.hytale.component.CommandBuffer<EntityStore>) takeCommandBufferMethod
-                        .invoke(store);
-            } catch (Exception e) {
-                LOGGER.warning("Could not get command buffer: " + e.getMessage());
-                return;
-            }
+            com.hypixel.hytale.component.CommandBuffer<EntityStore> commandBuffer = com.cometmod.util.CommandBufferUtil.take(store);
+            if (commandBuffer == null) return;
 
-            // Spawn projectile
             Ref<EntityStore> projectileRef = com.hypixel.hytale.server.core.modules.projectile.ProjectileModule.get()
                     .spawnProjectile(projectileUUID, playerRef, commandBuffer, projectileConfig, spawnPos, direction);
 
@@ -394,14 +384,7 @@ public class CometFallingSystem {
                 spawnCometBlock(targetWorld, targetBlockPos, store, tier, themeId, ownerUUID, zoneId);
             }
 
-            // Consume command buffer
-            try {
-                java.lang.reflect.Method consumeMethod = commandBuffer.getClass().getDeclaredMethod("consume");
-                consumeMethod.setAccessible(true);
-                consumeMethod.invoke(commandBuffer);
-            } catch (Exception e) {
-                LOGGER.warning("Could not consume command buffer: " + e.getMessage());
-            }
+            com.cometmod.util.CommandBufferUtil.consume(commandBuffer);
 
         } catch (Exception e) {
             LOGGER.warning("Error spawning falling comet: " + e.getMessage());
@@ -414,86 +397,10 @@ public class CometFallingSystem {
     public void spawnCometBlock(World world, Vector3i blockPos, Store<EntityStore> store, CometTier tier,
             String themeId, UUID ownerUUID, int zoneId) {
         try {
-            CometConfig config = CometConfig.getInstance();
-            if (!ClaimProtectionGuard.canSpawnAt(world, blockPos.x, blockPos.y, blockPos.z, config)) {
-                LOGGER.info("Comet block placement blocked by claim/protected-zone rules at " + blockPos);
-                return;
+            String blockIdName = CometSpawnUtil.placeAndRegisterCometBlock(world, blockPos, store, tier, themeId, ownerUUID, zoneId);
+            if (blockIdName != null) {
+                scheduleDespawn(world, blockPos, blockIdName);
             }
-
-            // Get chunk
-            long chunkIndex = com.hypixel.hytale.math.util.ChunkUtil.indexChunkFromBlock(
-                    blockPos.x, blockPos.z);
-            WorldChunk chunk = world.getChunkIfInMemory(chunkIndex);
-
-            if (chunk == null) {
-                // Try to get chunk (may load it)
-                chunk = world.getChunk(chunkIndex);
-            }
-
-            if (chunk == null) {
-                LOGGER.warning("Could not get chunk for comet block at " + blockPos);
-                return;
-            }
-
-            // Hytale chunks are 32x32 blocks, so use & 31 (0x1F) not & 15
-            int localX = blockPos.x & 31;
-            int localZ = blockPos.z & 31;
-
-            // Get BlockType (tier-specific)
-            String blockIdName = tier.getBlockId("Comet_Stone");
-            com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType blockType = com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType
-                    .getAssetMap()
-                    .getAsset(blockIdName);
-
-            if (blockType == null) {
-                LOGGER.warning(blockIdName + " block type not found!");
-                return;
-            }
-
-            // Get block ID
-            int blockId = com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType
-                    .getAssetMap().getIndex(blockIdName);
-
-            if (blockId == -1) {
-                LOGGER.warning(blockIdName + " block ID not found!");
-                return;
-            }
-
-            // Place the block
-            chunk.setBlock(localX, blockPos.y, localZ, blockId, blockType, 0, 0, 0);
-            chunk.markNeedsSaving();
-
-            // Register tier with wave manager (with owner for marker visibility)
-            CometWaveManager waveManager = CometModPlugin.getWaveManager();
-            if (waveManager != null) {
-                waveManager.registerCometZone(blockPos, zoneId);
-                waveManager.registerCometTier(world, blockPos, tier, ownerUUID);
-
-                // If we have a forced theme, register it now at the ACTUAL spawn position
-                if (themeId != null) {
-                    waveManager.forceTheme(blockPos, themeId);
-                }
-            }
-
-            // Spawn explosion particle system at landing position (tier-specific)
-            if (store != null) {
-                try {
-                    Vector3d explosionPos = new Vector3d(blockPos.x + 0.5, blockPos.y + 0.5, blockPos.z + 0.5);
-                    String explosionSystem = tier.getExplosionParticleSystem();
-                    com.hypixel.hytale.server.core.universe.world.ParticleUtil.spawnParticleEffect(
-                            explosionSystem,
-                            explosionPos,
-                            store);
-                } catch (Exception e) {
-                    LOGGER.warning("Failed to spawn explosion particle system: " + e.getMessage());
-                    e.printStackTrace();
-                }
-            }
-
-            // Register comet for persistent tracking and schedule despawn
-            CometDespawnTracker.getInstance().registerComet(blockPos, tier.getName());
-            scheduleDespawn(world, blockPos, blockIdName);
-
         } catch (Exception e) {
             LOGGER.severe("Error in spawnCometBlock: " + e.getMessage());
             e.printStackTrace();
@@ -532,40 +439,27 @@ public class CometFallingSystem {
                 return;
             }
 
-            // Check if the block is still a comet block
-            com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType currentBlockType = world
-                    .getBlockType(blockPos.x, blockPos.y, blockPos.z);
-
-            if (currentBlockType != null && currentBlockType.getId().startsWith("Comet_Stone_")) {
-                // Remove the block using world.breakBlock method (uses world coordinates)
+            // Always break whatever is at the registered position (simple v1 behavior)
+            {
                 try {
-                    // Use world.breakBlock to remove the block (sets it to air)
                     boolean broken = world.breakBlock(blockPos.x, blockPos.y, blockPos.z, 0);
                     if (broken) {
                         chunk.markNeedsSaving();
-                        LOGGER.info("Despawned " + blockIdName + " block at " + blockPos);
+                        LOGGER.info("Despawned block at " + blockPos + (blockIdName != null ? " (" + blockIdName + ")" : " (themed)"));
                     } else {
                         LOGGER.warning("Failed to break block at " + blockPos + " for despawn");
                     }
                 } catch (Exception e) {
-                    // Fallback: try using chunk.breakBlock with world coordinates
                     try {
                         boolean broken = chunk.breakBlock(blockPos.x, blockPos.y, blockPos.z, 0);
                         if (broken) {
                             chunk.markNeedsSaving();
-                            LOGGER.info(
-                                    "Despawned " + blockIdName + " block at " + blockPos + " (using chunk.breakBlock)");
-                        } else {
-                            LOGGER.warning("Failed to break block at " + blockPos + " using chunk.breakBlock");
+                            LOGGER.info("Despawned block at " + blockPos + " (using chunk.breakBlock)");
                         }
                     } catch (Exception e2) {
                         LOGGER.warning("Failed to despawn block at " + blockPos + ": " + e2.getMessage());
-                        e2.printStackTrace();
                     }
                 }
-            } else {
-                LOGGER.info("Block at " + blockPos + " is no longer a comet block (was " +
-                        (currentBlockType != null ? currentBlockType.getId() : "null") + "), skipping despawn");
             }
 
             // Clean up wave manager tracking and remove map marker (world available; store

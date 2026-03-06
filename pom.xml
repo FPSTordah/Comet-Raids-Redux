@@ -6,7 +6,7 @@
 
     <groupId>com.cometmod</groupId>
     <artifactId>comet-raids-redux</artifactId>
-    <version>3.3.0</version>
+    <version>4.0.0</version>
     <packaging>jar</packaging>
     <name>Comet_Raids_Redux</name>
 
@@ -49,12 +49,12 @@
 
         <resources>
             <resource>
-                <directory>${project.basedir}/Common</directory>
+                <directory>${project.basedir}/src/main/resources/Common</directory>
                 <targetPath>Common</targetPath>
                 <filtering>false</filtering>
             </resource>
             <resource>
-                <directory>${project.basedir}/Server</directory>
+                <directory>${project.basedir}/src/main/resources/Server</directory>
                 <targetPath>Server</targetPath>
                 <filtering>false</filtering>
             </resource>
@@ -63,8 +63,6 @@
                 <filtering>false</filtering>
                 <includes>
                     <include>manifest.json</include>
-                    <include>comet_config.json</include>
-                    <include>fixed_spawns.json</include>
                 </includes>
             </resource>
         </resources>

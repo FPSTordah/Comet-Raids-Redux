@@ -22,7 +22,7 @@ import java.util.logging.Logger;
  */
 public class CometLootChestBreakCleanupSystem extends EntityEventSystem<EntityStore, BreakBlockEvent> {
 
-    private static final Logger LOGGER = Logger.getLogger("CometLootChestBreakCleanupSystem");
+    private static final Logger LOGGER = Logger.getLogger(CometLootChestBreakCleanupSystem.class.getName());
 
     public CometLootChestBreakCleanupSystem() {
         super(BreakBlockEvent.class);
@@ -63,7 +63,11 @@ public class CometLootChestBreakCleanupSystem extends EntityEventSystem<EntitySt
         } catch (Exception e) {
             LOGGER.warning("Failed to clear chest windows on break: " + e.getMessage());
         } finally {
-            chestService.handleChestBroken(blockPos);
+            World world = null;
+            if (store.getExternalData() instanceof EntityStore) {
+                world = ((EntityStore) store.getExternalData()).getWorld();
+            }
+            chestService.handleChestBroken(world, blockPos);
         }
     }
 }

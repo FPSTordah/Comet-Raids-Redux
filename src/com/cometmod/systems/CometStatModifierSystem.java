@@ -42,7 +42,7 @@ import java.util.logging.Logger;
  */
 public class CometStatModifierSystem extends HolderSystem<EntityStore> {
 
-    private static final Logger LOGGER = Logger.getLogger("CometStatModifier");
+    private static final Logger LOGGER = Logger.getLogger(CometStatModifierSystem.class.getName());
 
     // Key for the stat modifier we add to entities
     public static final String HP_MODIFIER_KEY = "comet_hp_multiplier";
