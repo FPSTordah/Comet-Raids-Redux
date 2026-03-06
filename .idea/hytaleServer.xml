@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<project version="4">
-  <component name="HytaleServerSettings">
-    <option name="authMode" value="offline" />
-    <option name="javaPath" value="/usr/lib/jvm/java-latest-openjdk/bin/java" />
-  </component>
-</project>
